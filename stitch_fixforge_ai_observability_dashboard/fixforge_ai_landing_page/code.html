@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>FixForge AI - Autonomous Program Repair</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;700&amp;family=Geist:wght@400;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-elevated": "#121214",
+                      "surface-deep": "#09090b",
+                      "border-muted": "#27272a",
+                      "outline-variant": "#444748",
+                      "on-primary-fixed": "#1a1c1c",
+                      "text-muted": "#a1a1aa",
+                      "on-surface": "#e2e2e2",
+                      "warning-gray": "#a1a1aa",
+                      "background": "#131313",
+                      "tertiary-fixed-dim": "#c6c6c7",
+                      "on-error": "#690005",
+                      "on-error-container": "#ffdad6",
+                      "error": "#ffb4ab",
+                      "inverse-surface": "#e2e2e2",
+                      "surface-container-low": "#1b1b1b",
+                      "on-surface-variant": "#c4c7c8",
+                      "success-white": "#ffffff",
+                      "surface-container-highest": "#353535",
+                      "primary-container": "#e2e2e2",
+                      "surface-dim": "#131313",
+                      "surface-container": "#1f1f1f",
+                      "secondary-fixed-dim": "#c6c5cf",
+                      "secondary-container": "#4a4b53",
+                      "on-secondary-fixed": "#1a1b22",
+                      "surface": "#131313",
+                      "primary": "#ffffff",
+                      "inverse-on-surface": "#303030",
+                      "on-primary-container": "#636565",
+                      "on-background": "#e2e2e2",
+                      "primary-fixed": "#e2e2e2",
+                      "on-primary-fixed-variant": "#454747",
+                      "surface-tint": "#c6c6c7",
+                      "on-secondary-container": "#bcbbc5",
+                      "secondary": "#c6c5cf",
+                      "on-secondary-fixed-variant": "#46464e",
+                      "surface-container-lowest": "#0e0e0e",
+                      "surface-variant": "#353535",
+                      "on-tertiary-container": "#636565",
+                      "on-tertiary-fixed-variant": "#454747",
+                      "secondary-fixed": "#e3e1ec",
+                      "error-container": "#93000a",
+                      "surface-bright": "#393939",
+                      "on-tertiary": "#2f3131",
+                      "tertiary": "#ffffff",
+                      "tertiary-fixed": "#e2e2e2",
+                      "inverse-primary": "#5d5f5f",
+                      "on-secondary": "#2f3038",
+                      "tertiary-container": "#e2e2e2",
+                      "surface-container-high": "#2a2a2a",
+                      "outline": "#8e9192",
+                      "on-primary": "#2f3131",
+                      "on-tertiary-fixed": "#1a1c1c",
+                      "primary-fixed-dim": "#c6c6c7"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "margin-desktop": "24px",
+                      "gutter": "16px",
+                      "margin-mobile": "12px",
+                      "unit": "4px",
+                      "panel-gap": "1px"
+              },
+              "fontFamily": {
+                      "body-sm": [
+                              "Inter"
+                      ],
+                      "label-caps": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-lg": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "code-sm": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ]
+              },
+              "fontSize": {
+                      "body-sm": [
+                              "13px",
+                              {
+                                      "lineHeight": "18px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-caps": [
+                              "10px",
+                              {
+                                      "lineHeight": "12px",
+                                      "letterSpacing": "0.1em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "1.2",
+                                      "letterSpacing": "-0.04em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "code-sm": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "20px",
+                              {
+                                      "lineHeight": "1.4",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        body {
+            background-color: #000000;
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body class="font-body-md text-body-md antialiased min-h-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="bg-background/80 backdrop-blur-md fixed top-0 w-full z-50 border-b border-border-muted flex justify-between items-center h-16 px-margin-desktop w-full max-w-full duration-200 ease-in-out">
+<div class="font-headline-md text-headline-md font-bold tracking-tighter text-primary">FixForge AI</div>
+<nav class="hidden md:flex gap-gutter">
+<a class="text-primary font-bold border-b border-primary hover:text-primary transition-colors" href="#">Platform</a>
+<a class="text-text-muted hover:text-primary transition-colors" href="#">Benchmarks</a>
+<a class="text-text-muted hover:text-primary transition-colors" href="#">Research</a>
+<a class="text-text-muted hover:text-primary transition-colors" href="#">Docs</a>
+</nav>
+<div class="flex items-center gap-gutter">
+<span class="text-text-muted font-code-sm text-code-sm hidden md:inline">v0.8.2-alpha</span>
+<button class="bg-primary text-on-primary-fixed px-4 py-2 font-label-caps text-label-caps uppercase hover:bg-gray-200 transition-colors rounded-none">Launch Live Demo</button>
+</div>
+</header>
+<main class="flex-grow pt-16 px-margin-desktop md:px-margin-desktop max-w-[1440px] mx-auto w-full">
+<!-- Hero Section -->
+<section class="py-24 grid md:grid-cols-2 gap-gutter items-center min-h-[80vh]">
+<div class="flex flex-col gap-6 z-10">
+<h1 class="font-headline-lg text-headline-lg lg:text-[48px] lg:leading-[1.1]">Autonomous Program Repair with Isolated Docker Verification.</h1>
+<p class="text-text-muted text-lg max-w-lg">FixForge AI leverages advanced defect localization, root cause isolation, and deterministic Docker verification to repair complex codebase issues autonomously.</p>
+<div class="flex gap-4 mt-4">
+<button class="bg-primary text-on-primary-fixed px-6 py-3 font-label-caps text-label-caps uppercase hover:bg-gray-200 transition-colors rounded-none">Deploy on GitHub App</button>
+<button class="border border-border-muted text-primary px-6 py-3 font-label-caps text-label-caps uppercase hover:bg-surface-elevated transition-colors rounded-none">View SWE-bench Lite Results</button>
+</div>
+</div>
+<div class="relative h-96 md:h-full min-h-[400px] border border-border-muted bg-surface-deep flex items-center justify-center overflow-hidden">
+
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent pointer-events-none"></div>
+</div>
+</section>
+<!-- Value Props -->
+<section class="py-24 border-t border-border-muted">
+<div class="grid md:grid-cols-3 gap-panel-gap bg-border-muted border border-border-muted p-panel-gap">
+<div class="bg-surface-deep p-8 flex flex-col gap-4">
+<span class="material-symbols-outlined text-4xl text-text-muted" data-icon="science">science</span>
+<h3 class="font-headline-md text-headline-md text-primary">Objective Test-Driven Proof</h3>
+<p class="text-text-muted">Repairs are cryptographically signed and verified against deterministic unit tests in isolated environments.</p>
+</div>
+<div class="bg-surface-deep p-8 flex flex-col gap-4">
+<span class="material-symbols-outlined text-4xl text-text-muted" data-icon="radar">radar</span>
+<h3 class="font-headline-md text-headline-md text-primary">AST &amp; Vector Hybrid Localization</h3>
+<p class="text-text-muted">Combines structural abstract syntax tree analysis with semantic vector search for pinpoint defect localization.</p>
+</div>
+<div class="bg-surface-deep p-8 flex flex-col gap-4">
+<span class="material-symbols-outlined text-4xl text-text-muted" data-icon="speed">speed</span>
+<h3 class="font-headline-md text-headline-md text-primary">Calibrated Confidence Scoring</h3>
+<p class="text-text-muted">Every patch is accompanied by a mathematically rigorous confidence score derived from trace execution paths.</p>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-surface-deep text-primary font-code-sm text-code-sm w-full border-t border-border-muted grid grid-cols-1 md:grid-cols-2 gap-gutter p-margin-desktop transition-all">
+<div class="flex flex-col gap-2">
+<div class="font-label-caps text-label-caps text-primary">FixForge AI</div>
+<div class="text-text-muted">© 2024 FixForge AI. All Systems Operational.</div>
+<div class="text-text-muted mt-2 text-xs flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-success-white inline-block"></span>
+                All Sandboxes Ephemeral &amp; Network-Isolated
+            </div>
+</div>
+<div class="flex gap-4 md:justify-end items-start">
+<a class="text-text-muted hover:text-primary underline" href="#">Research</a>
+<a class="text-text-muted hover:text-primary underline" href="#">Documentation</a>
+<a class="text-text-muted hover:text-primary underline" href="#">Security</a>
+<a class="text-text-muted hover:text-primary underline" href="#">Status</a>
+</div>
+</footer>
+</body></html>
