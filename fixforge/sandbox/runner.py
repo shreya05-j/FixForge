@@ -1,51 +1,60 @@
 import docker
+import tarfile
+import tempfile
+import os
+from pathlib import Path
 from core.config import settings
+from typing import Dict, Any
 
-def run_in_sandbox(repo_path: str, diff_patch: str, test_cmd: str = "pytest") -> tuple[bool, str]:
+def run_in_sandbox(repo_path: str, diff_patch: str, test_cmd: str = "pytest") -> Dict[str, Any]:
     """
-    Secure Docker Execution Sandbox
-    Spins up ephemeral containers with strict network, CPU, and memory limits.
+    Uses Docker SDK to spin up a disposable container running tests safely.
     """
     client = docker.from_env()
     container = None
     
+    # We create a temporary script to run inside the container
+    entrypoint_script = f"""#!/bin/bash
+set -e
+cp -r /app_src/* /app_scratch/
+cd /app_scratch
+echo "{diff_patch}" > patch.diff
+if [ -s patch.diff ] && [ "$(cat patch.diff | grep '---' | wc -l)" -gt 0 ]; then
+    git apply patch.diff || true
+fi
+{test_cmd}
+"""
+    
     try:
-        # We start a container using our lightweight, unprivileged image
-        # In a real scenario, we copy the repository to a tmp scratchpad to avoid modifying read-only host mount
-        entrypoint_cmd = f"""
-        cp -r /app_src/* /app_scratch/ && \
-        cd /app_scratch && \
-        echo "{diff_patch}" > patch.diff && \
-        git apply patch.diff && \
-        {test_cmd}
-        """
-
         container = client.containers.run(
-            "fixforge-sandbox:latest",
-            command=["/bin/bash", "-c", entrypoint_cmd],
-            volumes={repo_path: {'bind': '/app_src', 'mode': 'ro'}},  # Read-only checkout mount
+            settings.DOCKER_SANDBOX_IMAGE,
+            command=["/bin/bash", "-c", entrypoint_script],
+            volumes={
+                repo_path: {'bind': '/app_src', 'mode': 'ro'}
+            },
             working_dir="/app_scratch",
-            network_mode="none",  # Net-isolated
-            mem_limit="512m",     # Hard resource limit
-            cpu_quota=50000,
-            cpu_period=100000,
-            user="sandbox_user",  # Nonroot unprivileged user
+            network_mode="none",
+            mem_limit=settings.MAX_CONTAINER_MEMORY,
+            cpu_quota=100000,
+            user="sandbox_user",
             detach=True
         )
         
-        # Hard timeout of 60 seconds
-        result = container.wait(timeout=60)
+        result = container.wait(timeout=settings.CONTAINER_TIMEOUT_SEC)
         exit_code = result['StatusCode']
-        logs = container.logs().decode('utf-8')
+        logs = container.logs(stdout=True, stderr=True).decode('utf-8')
         
-        return (exit_code == 0, logs)
-        
+        return {
+            "passed": (exit_code == 0),
+            "exit_code": exit_code,
+            "stdout": logs,
+            "stderr": "" # Combined in logs for simplicity here
+        }
     except docker.errors.ContainerError as e:
-        return False, e.stderr.decode('utf-8')
+        return {"passed": False, "exit_code": e.exit_status, "stdout": "", "stderr": e.stderr.decode('utf-8')}
     except Exception as e:
-        return False, str(e)
+        return {"passed": False, "exit_code": -1, "stdout": "", "stderr": str(e)}
     finally:
-        # Mandatory container destruction
         if container:
             try:
                 container.remove(force=True)

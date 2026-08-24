@@ -1,14 +1,14 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
-    GITHUB_TOKEN: str = ""
-    SANDBOX_TIMEOUT: int = 30
-    CHROMA_DB_PATH: str = "./chroma_data"
-    DATABASE_URL: str = "sqlite:///./fixforge.db"
-
-    class Config:
-        env_file = ".env"
+    CHROMA_PERSIST_DIR: str = "./chroma_data"
+    DOCKER_SANDBOX_IMAGE: str = "fixforge-sandbox:latest"
+    MAX_RETRIES: int = 3
+    CONTAINER_TIMEOUT_SEC: int = 60
+    MAX_CONTAINER_MEMORY: str = "512m"
+    
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 settings = Settings()

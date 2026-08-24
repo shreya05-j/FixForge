@@ -2,16 +2,15 @@ from core.state import AgentState
 
 def run_fixer(state: AgentState) -> AgentState:
     """
-    ForgeFixer: Uses the diagnostic report and test failure logs from previous retries to generate a clean unified diff.
+    ForgeFixer: Synthesizes unified diff using diagnostic report and retrieved code.
     """
-    print("Generating patch...")
-    state['diff'] = """--- a/target.py
-+++ b/target.py
-@@ -1,2 +1,3 @@
- def target_function(data):
--    return data.get('value')
-+    if data is None: return None
-+    return data.get('value')
+    # Mocking patch generation
+    diff = """--- a/src/main.py
++++ b/src/main.py
+@@ -1,2 +1,2 @@
+-def broken_func(): return False
++def broken_func(): return True
 """
-    state['status'] = 'fixing'
+    state['candidate_diff'] = diff
+    state['status'] = 'fixer_completed'
     return state

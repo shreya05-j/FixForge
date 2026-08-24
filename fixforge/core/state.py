@@ -1,20 +1,21 @@
-from typing import TypedDict, List, Dict, Any, Optional
+from typing import TypedDict, List, Dict, Any, Optional, Literal
 
 class AgentState(TypedDict):
-    repository: Dict[str, str]
+    repo_name: str
     issue_id: str
-    pr_id: Optional[str]
-    issue_description: str
-    stack_trace: str
+    issue_title: str
+    issue_body: str
+    stack_trace: Optional[str]
+    target_files: List[str]
     plan: str
-    retrieved_context: str
-    diagnosis: str
-    failure_category: str
-    severity: str
-    diff: str
-    test_results: str
-    test_passed: bool
+    retrieved_ast_context: Dict[str, Any]
+    historical_fix_context: List[Dict[str, Any]]
+    diagnosis_summary: str
+    failure_category: Literal["Syntax Error", "Logic Error", "Runtime Error", "Dependency Error", "Concurrency Issue", "Configuration Issue"]
+    severity: Literal["Low", "Medium", "High", "Critical"]
+    candidate_diff: str
+    test_results: Dict[str, Any]
     retry_count: int
     confidence_score: float
-    confidence_signals: Dict[str, float]
+    confidence_breakdown: Dict[str, float]
     status: str
