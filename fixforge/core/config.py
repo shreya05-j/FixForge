@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     MAX_RETRIES: int = 3
     CONTAINER_TIMEOUT_SEC: int = 60
     MAX_CONTAINER_MEMORY: str = "512m"
+    GITHUB_WEBHOOK_SECRET: str = ""
+    GITHUB_TOKEN: str = ""
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
