@@ -1,9 +1,6 @@
 from core.state import AgentState
 
-def run_confidence_engine(state: AgentState) -> AgentState:
-    """
-    Confidence Engine: Implements mathematical confidence formula.
-    """
+async def run_confidence_engine(state: AgentState) -> AgentState:
     test_pass = 1.0 if state.get('test_results', {}).get('passed') else 0.0
     semgrep_agr = 0.9
     context_match = 0.8
