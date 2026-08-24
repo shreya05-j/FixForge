@@ -1,11 +1,14 @@
 FROM python:3.10-slim
 
-# Create a non-root user
+# Create a nonroot unprivileged user
 RUN useradd -m -s /bin/bash sandbox_user
 
-WORKDIR /app
-RUN pip install pytest semgrep tree-sitter tree-sitter-python
+WORKDIR /app_scratch
+
+# Install foundational testing and AST dependencies
+RUN pip install --no-cache-dir pytest semgrep tree-sitter tree-sitter-python git
+
+# Make sure sandbox_user owns the scratchpad
+RUN chown -R sandbox_user:sandbox_user /app_scratch
 
 USER sandbox_user
-
-CMD ["pytest"]

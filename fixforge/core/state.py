@@ -1,19 +1,20 @@
 from typing import TypedDict, List, Dict, Any, Optional
 
-class GraphState(TypedDict):
+class AgentState(TypedDict):
+    repository: Dict[str, str]
     issue_id: str
-    github_url: str
+    pr_id: Optional[str]
     issue_description: str
-    repo_path: str
-    context_files: List[str]
-    retrieved_code: str
+    stack_trace: str
+    plan: str
+    retrieved_context: str
     diagnosis: str
-    severity: int
-    proposed_patch: str
-    patch_diff: str
-    verification_logs: str
-    verification_success: bool
+    failure_category: str
+    severity: str
+    diff: str
+    test_results: str
+    test_passed: bool
+    retry_count: int
     confidence_score: float
-    report_markdown: str
-    current_step: str
-    iteration_count: int
+    confidence_signals: Dict[str, float]
+    status: str

@@ -1,8 +1,17 @@
-from core.state import GraphState
+from core.state import AgentState
 
-def run_fixer(state: GraphState) -> GraphState:
+def run_fixer(state: AgentState) -> AgentState:
+    """
+    ForgeFixer: Uses the diagnostic report and test failure logs from previous retries to generate a clean unified diff.
+    """
     print("Generating patch...")
-    state['proposed_patch'] = "def faulty_function():\n    return True"
-    state['patch_diff'] = "--- a/file.py\n+++ b/file.py\n@@ -1,2 +1,2 @@\n-def faulty_function():\n-    pass\n+def faulty_function():\n+    return True"
-    state['current_step'] = 'fixing'
+    state['diff'] = """--- a/target.py
++++ b/target.py
+@@ -1,2 +1,3 @@
+ def target_function(data):
+-    return data.get('value')
++    if data is None: return None
++    return data.get('value')
+"""
+    state['status'] = 'fixing'
     return state
