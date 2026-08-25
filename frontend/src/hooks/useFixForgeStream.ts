@@ -55,7 +55,7 @@ export function useFixForgeStream(sessionId: string) {
     const es = new EventSource(`${baseUrl}/api/sessions/${sessionId}/stream`);
     eventSourceRef.current = es;
 
-    es.addEventListener('node_start', (e: MessageEvent) => {
+    es.addEventListener('node_start', (e: any) => {
       const data = JSON.parse(e.data);
       setState(prev => ({
         ...prev,
@@ -70,7 +70,7 @@ export function useFixForgeStream(sessionId: string) {
       }));
     });
 
-    es.addEventListener('node_progress', (e: MessageEvent) => {
+    es.addEventListener('node_progress', (e: any) => {
       const data = JSON.parse(e.data);
       if (data.chunk) {
         setState(prev => ({ ...prev, chunks: prev.chunks + data.chunk }));
@@ -80,7 +80,7 @@ export function useFixForgeStream(sessionId: string) {
       }
     });
 
-    es.addEventListener('node_complete', (e: MessageEvent) => {
+    es.addEventListener('node_complete', (e: any) => {
       const data = JSON.parse(e.data);
       setState(prev => ({
         ...prev,
@@ -97,7 +97,7 @@ export function useFixForgeStream(sessionId: string) {
       }));
     });
 
-    es.addEventListener('retry_loop', (e: MessageEvent) => {
+    es.addEventListener('retry_loop', (e: any) => {
       const data = JSON.parse(e.data);
       setState(prev => ({
         ...prev,
@@ -106,7 +106,7 @@ export function useFixForgeStream(sessionId: string) {
       }));
     });
 
-    es.addEventListener('pipeline_complete', (e: MessageEvent) => {
+    es.addEventListener('pipeline_complete', (e: any) => {
       const data = JSON.parse(e.data);
       setState(prev => ({
         ...prev,
@@ -118,7 +118,7 @@ export function useFixForgeStream(sessionId: string) {
       es.close(); // Cleanly close connection when complete
     });
     
-    es.addEventListener('error', (e: MessageEvent) => {
+    es.addEventListener('error', (e: any) => {
       const data = e.data ? JSON.parse(e.data) : { detail: 'Unknown streaming error' };
       setState(prev => ({ ...prev, error: data.detail }));
     });
