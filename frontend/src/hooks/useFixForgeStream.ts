@@ -4,7 +4,7 @@ export interface AgentNode {
   agent: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   latency?: number;
-  output?: any;
+  output?: unknown;
 }
 
 export interface FixForgeStreamState {
@@ -35,28 +35,29 @@ const initialState: FixForgeStreamState = {
   error: null,
 };
 
+const MAX_RECONNECT_ATTEMPTS = 5;
+
 export function useFixForgeStream(sessionId: string) {
   const [state, setState] = useState<FixForgeStreamState>(initialState);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const MAX_RECONNECT_ATTEMPTS = 5;
-
   const connect = useCallback(() => {
     if (!sessionId) return;
-    
+
     // Clear any existing connection
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
 
     // Default to localhost:8000 for FastAPI backend during dev
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const baseUrl = 'http://localhost:8000';
     const es = new EventSource(`${baseUrl}/api/sessions/${sessionId}/stream`);
     eventSourceRef.current = es;
 
-    es.addEventListener('node_start', (e: any) => {
-      const data = JSON.parse(e.data);
+    es.addEventListener('node_start', (e: Event) => {
+      const msgEvent = e as MessageEvent;
+      const data = JSON.parse(msgEvent.data);
       setState(prev => ({
         ...prev,
         activeNode: data.agent,
@@ -70,8 +71,9 @@ export function useFixForgeStream(sessionId: string) {
       }));
     });
 
-    es.addEventListener('node_progress', (e: any) => {
-      const data = JSON.parse(e.data);
+    es.addEventListener('node_progress', (e: Event) => {
+      const msgEvent = e as MessageEvent;
+      const data = JSON.parse(msgEvent.data);
       if (data.chunk) {
         setState(prev => ({ ...prev, chunks: prev.chunks + data.chunk }));
       }
@@ -80,8 +82,9 @@ export function useFixForgeStream(sessionId: string) {
       }
     });
 
-    es.addEventListener('node_complete', (e: any) => {
-      const data = JSON.parse(e.data);
+    es.addEventListener('node_complete', (e: Event) => {
+      const msgEvent = e as MessageEvent;
+      const data = JSON.parse(msgEvent.data);
       setState(prev => ({
         ...prev,
         nodes: {
@@ -97,8 +100,9 @@ export function useFixForgeStream(sessionId: string) {
       }));
     });
 
-    es.addEventListener('retry_loop', (e: any) => {
-      const data = JSON.parse(e.data);
+    es.addEventListener('retry_loop', (e: Event) => {
+      const msgEvent = e as MessageEvent;
+      const data = JSON.parse(msgEvent.data);
       setState(prev => ({
         ...prev,
         retryIteration: data.iteration,
@@ -106,8 +110,9 @@ export function useFixForgeStream(sessionId: string) {
       }));
     });
 
-    es.addEventListener('pipeline_complete', (e: any) => {
-      const data = JSON.parse(e.data);
+    es.addEventListener('pipeline_complete', (e: Event) => {
+      const msgEvent = e as MessageEvent;
+      const data = JSON.parse(msgEvent.data);
       setState(prev => ({
         ...prev,
         isComplete: true,
@@ -117,16 +122,17 @@ export function useFixForgeStream(sessionId: string) {
       }));
       es.close(); // Cleanly close connection when complete
     });
-    
-    es.addEventListener('error', (e: any) => {
-      const data = e.data ? JSON.parse(e.data) : { detail: 'Unknown streaming error' };
+
+    es.addEventListener('error', (e: Event) => {
+      const msgEvent = e as MessageEvent;
+      const data = msgEvent.data ? JSON.parse(msgEvent.data) : { detail: 'Unknown streaming error' };
       setState(prev => ({ ...prev, error: data.detail }));
     });
 
     es.onerror = (error) => {
       console.error("SSE Connection Error:", error);
       es.close();
-      
+
       // Implement Exponential Backoff Reconnection
       if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
         const backoffMs = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 10000);
