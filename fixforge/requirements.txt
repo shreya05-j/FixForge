@@ -17,3 +17,8 @@ httpx==0.27.0
 groq==0.4.1
 openai==1.14.3
 instructor==1.2.6
+datasets
+rich
+scipy
+sse-starlette
+litellm
