@@ -117,8 +117,8 @@ export function useFixForgeStream(sessionId: string) {
         ...prev,
         isComplete: true,
         finalDiff: data.diff,
-        confidenceScore: data.confidenceScore || data.confidence_score,
-        githubComment: data.githubComment || data.github_comment
+        confidenceScore: data.confidenceScore ?? data.confidence_score,
+        githubComment: data.githubComment ?? data.github_comment
       }));
       es.close(); // Cleanly close connection when complete
     });
