@@ -4,6 +4,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     CHROMA_PERSIST_DIR: str = "./chroma_data"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./fixforge.db"
     DOCKER_SANDBOX_IMAGE: str = "fixforge-sandbox:latest"
     MAX_RETRIES: int = 3
     CONTAINER_TIMEOUT_SEC: int = 60

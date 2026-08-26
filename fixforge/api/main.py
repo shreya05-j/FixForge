@@ -14,8 +14,8 @@ app.add_middleware(
 )
 
 @app.on_event("startup")
-def on_startup():
-    init_db()
+async def on_startup():
+    await init_db()
 
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["Sessions"])
