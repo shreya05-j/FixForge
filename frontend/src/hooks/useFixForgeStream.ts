@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { mockScenarios } from '../data/mockScenarios';
+import { DemoPlaybackEngine } from '../utils/demoPlayback';
 
 export interface AgentNode {
   agent: string;
@@ -19,6 +21,7 @@ export interface FixForgeStreamState {
   finalDiff: string | null;
   githubComment: string | null;
   error: string | null;
+  isDemo?: boolean;
 }
 
 const initialState: FixForgeStreamState = {
@@ -39,18 +42,37 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 
 export function useFixForgeStream(sessionId: string) {
   const [state, setState] = useState<FixForgeStreamState>(initialState);
+  
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  
+  const engineRef = useRef<DemoPlaybackEngine | null>(null);
+
   const connect = useCallback(() => {
     if (!sessionId) return;
+    
+    // Check if it's a demo scenario
+    if (mockScenarios[sessionId]) {
+       const scenario = mockScenarios[sessionId];
+       engineRef.current?.stop();
+       
+       const engine = new DemoPlaybackEngine(scenario, (update) => {
+         setState(update);
+       });
+       engineRef.current = engine;
+       setState(prev => ({...prev, isDemo: true, error: null}));
+       engine.play();
+       return;
+    }
 
-    // Clear any existing connection
+    // Real SSE Connection
+    setState(prev => ({...prev, isDemo: false}));
+    
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
 
-    // Default to localhost:8000 for FastAPI backend during dev
     const baseUrl = 'http://localhost:8000';
     const es = new EventSource(`${baseUrl}/api/sessions/${sessionId}/stream`);
     eventSourceRef.current = es;
@@ -63,10 +85,7 @@ export function useFixForgeStream(sessionId: string) {
         activeNode: data.agent,
         nodes: {
           ...prev.nodes,
-          [data.agent]: {
-            agent: data.agent,
-            status: 'running'
-          }
+          [data.agent]: { agent: data.agent, status: 'running' }
         }
       }));
     });
@@ -96,7 +115,7 @@ export function useFixForgeStream(sessionId: string) {
             output: data.output
           }
         },
-        chunks: '' // Reset token chunks for next agent
+        chunks: '' 
       }));
     });
 
@@ -120,7 +139,7 @@ export function useFixForgeStream(sessionId: string) {
         confidenceScore: data.confidenceScore ?? data.confidence_score,
         githubComment: data.githubComment ?? data.github_comment
       }));
-      es.close(); // Cleanly close connection when complete
+      es.close();
     });
 
     es.addEventListener('error', (e: Event) => {
@@ -133,18 +152,29 @@ export function useFixForgeStream(sessionId: string) {
       console.error("SSE Connection Error:", error);
       es.close();
 
-      // Implement Exponential Backoff Reconnection
       if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
         const backoffMs = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 10000);
         reconnectAttemptsRef.current++;
         reconnectTimeoutRef.current = setTimeout(connect, backoffMs);
       } else {
-        setState(prev => ({ ...prev, error: 'Connection lost. Max reconnect attempts reached.' }));
+        // Automatically degrade to offline demo mode
+        console.warn("Max reconnects reached. Falling back to offline demo mode.");
+        setState(prev => ({ ...prev, error: 'Connection lost. Falling back to offline demo.' }));
+        
+        // Wait 2 seconds, then load the default demo
+        setTimeout(() => {
+           const fallbackEngine = new DemoPlaybackEngine(mockScenarios['demo-flask'], (update) => {
+              setState(update);
+           });
+           engineRef.current = fallbackEngine;
+           setState(prev => ({...prev, isDemo: true, error: null}));
+           fallbackEngine.play();
+        }, 2000);
       }
     };
 
     es.onopen = () => {
-      reconnectAttemptsRef.current = 0; // Reset counter on successful connection
+      reconnectAttemptsRef.current = 0; 
     };
   }, [sessionId]);
 
@@ -158,8 +188,18 @@ export function useFixForgeStream(sessionId: string) {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      if (engineRef.current) {
+        engineRef.current.stop();
+      }
     };
   }, [connect]);
 
-  return state;
+  // Method to manually re-trigger demo if needed
+  const replayDemo = useCallback(() => {
+    if (state.isDemo && engineRef.current) {
+      engineRef.current.play();
+    }
+  }, [state.isDemo]);
+
+  return { ...state, replayDemo };
 }

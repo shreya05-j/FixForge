@@ -1,0 +1,32 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+@layer base {
+  body {
+    @apply bg-background text-on-surface h-screen w-screen overflow-hidden flex flex-col font-body-md text-body-md;
+  }
+}
+
+@layer utilities {
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+.glass-panel {
+  background-color: rgba(18, 18, 20, 0.8);
+  backdrop-filter: blur(20px);
+}
+.bento-grid {
+  display: grid;
+  gap: 1px;
+  background-color: #27272a; /* border-muted */
+  border: 1px solid #27272a;
+}
+.bento-item {
+  background-color: #131313; /* background */
+}
