@@ -7,7 +7,7 @@ from sse_starlette.sse import EventSourceResponse
 
 # Try importing the graph build workflow, or create a mock generator
 try:
-    from fixforge.graph.workflow import build_workflow
+    from graph.workflow import build_workflow
     GRAPH_AVAILABLE = True
 except ImportError:
     GRAPH_AVAILABLE = False
