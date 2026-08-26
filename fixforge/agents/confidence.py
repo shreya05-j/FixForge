@@ -1,18 +1,21 @@
 from core.state import AgentState
+from typing import Dict, Any
 
-async def run_confidence_engine(state: AgentState) -> AgentState:
+async def run_confidence_engine(state: AgentState) -> Dict[str, Any]:
     test_pass = 1.0 if state.get('test_results', {}).get('passed') else 0.0
     semgrep_agr = 0.9
     context_match = 0.8
     consistency = 0.85
     
     score = (0.45 * test_pass) + (0.25 * semgrep_agr) + (0.15 * context_match) + (0.15 * consistency)
-    state['confidence_score'] = round(score, 4)
-    state['confidence_breakdown'] = {
-        "TestPass": test_pass,
-        "SemgrepAgreement": semgrep_agr,
-        "ContextMatch": context_match,
-        "Consistency": consistency
+    
+    return {
+        'confidence_score': round(score, 4),
+        'confidence_breakdown': {
+            "TestPass": test_pass,
+            "SemgrepAgreement": semgrep_agr,
+            "ContextMatch": context_match,
+            "Consistency": consistency
+        },
+        'status': 'confidence_scored'
     }
-    state['status'] = 'confidence_scored'
-    return state

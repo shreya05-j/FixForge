@@ -1,13 +1,13 @@
 from core.state import AgentState
 from core.llm import async_llm_client
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Dict, Any
 
 class PlannerOutput(BaseModel):
     plan: str = Field(description="Step-by-step investigation strategy")
     target_files: List[str] = Field(description="List of target file paths to investigate")
 
-async def run_planner(state: AgentState) -> AgentState:
+async def run_planner(state: AgentState) -> Dict[str, Any]:
     """
     ForgePlanner: Evaluates issue to generate prioritized target files and search directives using Llama 3.3.
     """
@@ -25,13 +25,16 @@ async def run_planner(state: AgentState) -> AgentState:
             ],
             max_retries=3
         )
-        state['plan'] = response.plan
-        state['target_files'] = response.target_files
+        plan_val = response.plan
+        target_files_val = response.target_files
     except Exception as e:
         print(f"Error in Planner LLM: {e}")
         # Graceful fallback
-        state['plan'] = "Fallback plan: Identify fault and patch."
-        state['target_files'] = []
+        plan_val = "Fallback plan: Identify fault and patch."
+        target_files_val = []
     
-    state['status'] = 'planner_completed'
-    return state
+    return {
+        'plan': plan_val,
+        'target_files': target_files_val,
+        'status': 'planner_completed'
+    }

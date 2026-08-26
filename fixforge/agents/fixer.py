@@ -2,10 +2,12 @@ from core.state import AgentState
 from core.llm import async_llm_client
 from pydantic import BaseModel, Field
 
+from typing import Dict, Any
+
 class FixerOutput(BaseModel):
     candidate_diff: str = Field(description="Clean git unified diff string addressing the issue. Must start with --- and +++")
 
-async def run_fixer(state: AgentState) -> AgentState:
+async def run_fixer(state: AgentState) -> Dict[str, Any]:
     """
     ForgeFixer: Synthesizes unified diff using diagnostic report and retrieved code. Uses Qwen for coding.
     """
@@ -28,10 +30,12 @@ async def run_fixer(state: AgentState) -> AgentState:
             ],
             max_retries=3
         )
-        state['candidate_diff'] = response.candidate_diff
+        diff = response.candidate_diff
     except Exception as e:
         print(f"Error in Fixer LLM: {e}")
-        state['candidate_diff'] = ""
+        diff = ""
         
-    state['status'] = 'fixer_completed'
-    return state
+    return {
+        'candidate_diff': diff,
+        'status': 'fixer_completed'
+    }

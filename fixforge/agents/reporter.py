@@ -3,7 +3,9 @@ from memory.chroma_client import chroma_manager
 from api.services.github import post_pr_review_comment
 import uuid
 
-async def run_reporter(state: AgentState) -> AgentState:
+from typing import Dict, Any
+
+async def run_reporter(state: AgentState) -> Dict[str, Any]:
     """
     ForgeReporter: Formats markdown review comment and saves verified resolution.
     Posts the report natively back to GitHub via REST API.
@@ -45,5 +47,6 @@ async def run_reporter(state: AgentState) -> AgentState:
     except Exception as e:
         print(f"Failed to post GitHub PR comment: {e}")
 
-    state['status'] = 'reporter_completed'
-    return state
+    return {
+        'status': 'reporter_completed'
+    }

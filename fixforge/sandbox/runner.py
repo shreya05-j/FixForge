@@ -36,7 +36,7 @@ fi
             network_mode="none",
             mem_limit=settings.MAX_CONTAINER_MEMORY,
             cpu_quota=100000,
-            user="sandbox_user",
+            user="nonroot",
             detach=True
         )
         
