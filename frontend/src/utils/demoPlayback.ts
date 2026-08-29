@@ -1,5 +1,5 @@
-import { FixForgeStreamState, AgentNode } from '../hooks/useFixForgeStream';
-import { MockScenario } from '../data/mockScenarios';
+import type { FixForgeStreamState } from '../hooks/useFixForgeStream';
+import type { MockScenario } from '../data/mockScenarios';
 
 const pipelineOrder = [
   'planner',
@@ -65,7 +65,7 @@ export class DemoPlaybackEngine {
         cumulativeDelay += 1000;
       }
 
-      pipelineOrder.forEach((agent, idx) => {
+      pipelineOrder.forEach((agent, _idx) => {
         // Start node
         this.schedule(() => {
           this.onStateUpdate(prev => ({
@@ -82,7 +82,7 @@ export class DemoPlaybackEngine {
 
         // Simulate streaming tokens or logs
         if (agent === 'verifier') {
-          attempt.logs.forEach((log, logIdx) => {
+          attempt.logs.forEach((log, _logIdx) => {
             this.schedule(() => {
               this.onStateUpdate(prev => ({
                 ...prev,

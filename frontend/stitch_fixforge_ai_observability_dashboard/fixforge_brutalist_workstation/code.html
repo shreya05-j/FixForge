@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>FixForge AI Workstation</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed": "#1a1c1c",
+                        "on-error": "#690005",
+                        "on-secondary": "#2f3038",
+                        "inverse-on-surface": "#303030",
+                        "on-tertiary-fixed-variant": "#454747",
+                        "secondary-fixed-dim": "#c6c5cf",
+                        "outline-variant": "#444748",
+                        "surface-container-highest": "#353535",
+                        "inverse-primary": "#5d5f5f",
+                        "tertiary": "#ffffff",
+                        "surface": "#131313",
+                        "on-surface": "#e2e2e2",
+                        "surface-container": "#1f1f1f",
+                        "tertiary-container": "#e2e2e2",
+                        "inverse-surface": "#e2e2e2",
+                        "surface-variant": "#353535",
+                        "primary-fixed": "#e2e2e2",
+                        "secondary-container": "#4a4b53",
+                        "surface-container-high": "#2a2a2a",
+                        "background": "#131313",
+                        "on-tertiary-container": "#636565",
+                        "primary": "#ffffff",
+                        "primary-container": "#e2e2e2",
+                        "on-background": "#e2e2e2",
+                        "on-secondary-container": "#bcbbc5",
+                        "on-secondary-fixed-variant": "#46464e",
+                        "surface-tint": "#c6c6c7",
+                        "tertiary-fixed-dim": "#c6c6c7",
+                        "outline": "#8e9192",
+                        "on-primary-fixed-variant": "#454747",
+                        "on-primary": "#2f3131",
+                        "surface-container-low": "#1b1b1b",
+                        "primary-fixed-dim": "#c6c6c7",
+                        "on-primary-fixed": "#1a1c1c",
+                        "secondary": "#c6c5cf",
+                        "on-primary-container": "#636565",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-error-container": "#ffdad6",
+                        "surface-bright": "#393939",
+                        "secondary-fixed": "#e3e1ec",
+                        "error-container": "#93000a",
+                        "on-surface-variant": "#c4c7c8",
+                        "on-secondary-fixed": "#1a1b22",
+                        "on-tertiary": "#2f3131",
+                        "error": "#ffb4ab",
+                        "surface-dim": "#131313",
+                        "tertiary-fixed": "#e2e2e2"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "lg": "24px",
+                        "unit": "4px",
+                        "md": "16px",
+                        "xl": "32px",
+                        "gutter": "1px",
+                        "sm": "8px"
+                    },
+                    "fontFamily": {
+                        "headline-lg": ["Geist"],
+                        "label-caps": ["JetBrains Mono"],
+                        "body-md": ["Geist"],
+                        "body-sm": ["Geist"],
+                        "code-md": ["JetBrains Mono"],
+                        "headline-md": ["Geist"],
+                        "code-sm": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "headline-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "label-caps": ["10px", { "lineHeight": "12px", "letterSpacing": "0.05em", "fontWeight": "700" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "body-sm": ["12px", { "lineHeight": "16px", "fontWeight": "400" }],
+                        "code-md": ["13px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "headline-md": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "code-sm": ["11px", { "lineHeight": "14px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col font-body-md overflow-hidden antialiased">
+<!-- TopAppBar -->
+<header class="bg-surface dark:bg-background border-b border-outline-variant flex justify-between items-center w-full px-md h-12 z-50 flex-shrink-0">
+<div class="flex items-center gap-md">
+<div class="font-headline-md text-headline-md font-bold tracking-tight text-primary dark:text-on-background uppercase">
+                FIXFORGE AI // AUTONOMOUS PROGRAM REPAIR
+            </div>
+<div class="font-code-md text-code-md text-on-surface-variant flex items-center gap-sm">
+<span class="material-symbols-outlined text-on-surface-variant" style="font-size: 16px;">terminal</span>
+<span>Active Repo: pallets/flask [main] #1084</span>
+</div>
+</div>
+<div class="flex items-center gap-md">
+<nav class="hidden md:flex gap-sm">
+<a class="font-label-caps text-label-caps text-on-surface-variant font-medium px-sm py-sm hover:bg-surface-variant transition-colors duration-150" href="#">REPOSITORIES</a>
+<a class="font-label-caps text-label-caps text-on-surface-variant font-medium px-sm py-sm hover:bg-surface-variant transition-colors duration-150" href="#">AGENTS</a>
+<a class="font-label-caps text-label-caps text-primary font-bold border-b-2 border-primary pb-1 px-sm py-sm hover:bg-surface-variant transition-colors duration-150" href="#">PIPELINES</a>
+</nav>
+<div class="flex items-center gap-sm ml-md border-l border-outline-variant pl-md">
+<button class="text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined">settings</span></button>
+<button class="text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined">terminal</span></button>
+<button class="text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined">notifications</span></button>
+<div class="bg-primary text-on-primary font-code-sm text-code-sm px-sm py-xs ml-sm rounded-sm font-bold">
+                    v1.0.0-PROD
+                </div>
+</div>
+</div>
+</header>
+<!-- Telemetry Bar -->
+<div class="border-b border-outline-variant bg-surface-container-low px-md py-sm flex justify-between items-center font-code-sm text-code-sm text-on-surface-variant flex-shrink-0">
+<div class="flex gap-lg">
+<div class="flex items-center gap-xs">
+<span class="text-primary font-bold">STATUS:</span> <span class="bg-primary text-on-primary px-1 font-bold rounded-sm">VERIFIED</span>
+</div>
+<div class="flex items-center gap-xs">
+<span class="text-primary font-bold">ORCHESTRATOR:</span> <span>LangGraph</span>
+</div>
+<div class="flex items-center gap-xs">
+<span class="text-primary font-bold">EXECUTION:</span> <span>42.6s</span>
+</div>
+</div>
+<div class="flex items-center gap-xs">
+<span class="text-primary font-bold">CONFIDENCE:</span>
+<span class="text-primary font-code-md">94%</span>
+<div class="w-24 h-2 bg-surface-container-highest rounded-full ml-sm overflow-hidden">
+<div class="h-full bg-primary" style="width: 94%"></div>
+</div>
+</div>
+</div>
+<!-- Main Workspace Layout -->
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar -->
+<aside class="bg-surface-container-lowest dark:bg-background border-r border-outline-variant w-16 md:w-20 flex flex-col items-center py-4 flex-shrink-0 z-40">
+<div class="font-headline-sm text-headline-sm font-black mb-sm hidden md:block text-center text-primary dark:text-on-background">PIPELINE</div>
+<div class="font-code-sm text-code-sm text-on-surface-variant mb-lg hidden md:block text-center">AGENT_TRACK_V1</div>
+<nav class="flex flex-col w-full gap-gutter flex-1">
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface w-full py-3 hover:bg-surface-variant group relative" href="#">
+<span class="material-symbols-outlined mb-xs">assignment</span>
+<span class="font-label-caps text-label-caps">Planner</span>
+<span class="font-code-sm text-[8px] text-outline opacity-50 absolute bottom-1">1.2s</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface w-full py-3 hover:bg-surface-variant group relative" href="#">
+<span class="material-symbols-outlined mb-xs">search</span>
+<span class="font-label-caps text-label-caps">Retriever</span>
+<span class="font-code-sm text-[8px] text-outline opacity-50 absolute bottom-1">2.4s</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface w-full py-3 hover:bg-surface-variant group relative" href="#">
+<span class="material-symbols-outlined mb-xs">analytics</span>
+<span class="font-label-caps text-label-caps">Diagnoser</span>
+<span class="font-code-sm text-[8px] text-outline opacity-50 absolute bottom-1">3.1s</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface w-full py-3 hover:bg-surface-variant group relative" href="#">
+<span class="material-symbols-outlined mb-xs">build</span>
+<span class="font-label-caps text-label-caps">Fixer</span>
+<span class="font-code-sm text-[8px] text-outline opacity-50 absolute bottom-1">8.4s</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-primary text-on-primary border-l-2 border-primary w-full py-3 group relative Active: scale-95 transition-transform" href="#">
+<span class="material-symbols-outlined mb-xs">fact_check</span>
+<span class="font-label-caps text-label-caps font-bold">Verifier</span>
+<span class="font-code-sm text-[8px] opacity-75 absolute bottom-1">14.2s</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface w-full py-3 hover:bg-surface-variant group relative" href="#">
+<span class="material-symbols-outlined mb-xs">speed</span>
+<span class="font-label-caps text-label-caps">Confidence</span>
+<span class="font-code-sm text-[8px] text-outline opacity-50 absolute bottom-1">0.4s</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface w-full py-3 hover:bg-surface-variant group relative" href="#">
+<span class="material-symbols-outlined mb-xs">description</span>
+<span class="font-label-caps text-label-caps">Reporter</span>
+<span class="font-code-sm text-[8px] text-outline opacity-50 absolute bottom-1">0.8s</span>
+</a>
+</nav>
+<div class="w-full px-sm mt-auto">
+<button class="w-full bg-surface-container-highest hover:bg-surface-bright text-primary border border-outline-variant font-label-caps text-label-caps py-sm flex flex-col items-center transition-colors">
+<span class="material-symbols-outlined text-[16px] mb-xs">play_arrow</span>
+<span>TRIGGER</span>
+</button>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 flex overflow-hidden">
+<!-- Left Split (60%) -->
+<div class="flex-[3] flex flex-col min-w-0 border-r border-outline-variant bg-surface-container">
+<!-- Inner Tabs -->
+<div class="flex border-b border-outline-variant bg-surface-container-low font-label-caps text-label-caps">
+<button class="px-md py-sm text-primary bg-surface border-t-2 border-primary flex items-center gap-xs">
+<span class="material-symbols-outlined text-[14px]">difference</span> DIFF
+                    </button>
+<button class="px-md py-sm text-on-surface-variant hover:bg-surface-variant border-t-2 border-transparent border-r border-outline-variant flex items-center gap-xs transition-colors">
+<span class="material-symbols-outlined text-[14px]">route</span> TRACE
+                    </button>
+<button class="px-md py-sm text-on-surface-variant hover:bg-surface-variant border-t-2 border-transparent border-r border-outline-variant flex items-center gap-xs transition-colors">
+<span class="material-symbols-outlined text-[14px]">terminal</span> CONSOLE
+                    </button>
+<button class="px-md py-sm text-on-surface-variant hover:bg-surface-variant border-t-2 border-transparent border-r border-outline-variant flex items-center gap-xs transition-colors">
+<span class="material-symbols-outlined text-[14px]">history</span> HISTORY
+                    </button>
+</div>
+<!-- Diff Content -->
+<div class="flex-1 overflow-auto bg-background p-md">
+<div class="font-code-sm text-code-sm border border-outline-variant rounded-sm overflow-hidden flex flex-col">
+<div class="bg-surface-container-high border-b border-outline-variant px-sm py-xs flex justify-between items-center text-on-surface-variant">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-[14px]">description</span>
+<span>src/flask/ctx.py</span>
+</div>
+<span>Lines 280-298</span>
+</div>
+<div class="flex bg-background">
+<!-- Line Numbers -->
+<div class="flex flex-col text-right px-sm py-sm text-outline border-r border-outline-variant select-none opacity-50 bg-surface-container-lowest">
+<div>280</div>
+<div>281</div>
+<div>282</div>
+<div>283</div>
+<div>284</div>
+<div>285</div>
+<div>286</div>
+<div>287</div>
+<div>288</div>
+<div>289</div>
+<div>290</div>
+<div>291</div>
+<div>292</div>
+<div>293</div>
+</div>
+<!-- Code Content -->
+<div class="flex-1 py-sm overflow-x-auto whitespace-pre font-code-md text-code-md">
+<div class="px-sm text-on-surface-variant opacity-50">    def pop(self, exc: BaseException | None = _sentinel) -&gt; None:</div>
+<div class="px-sm text-on-surface-variant opacity-50">        """Pops the request context and unbinds it by doing that.  This will</div>
+<div class="px-sm text-on-surface-variant opacity-50">        also trigger the execution of functions registered by the</div>
+<div class="px-sm text-on-surface-variant opacity-50">        :meth:`~flask.Flask.teardown_request` decorator.</div>
+<div class="px-sm text-on-surface-variant opacity-50">        """</div>
+<div class="px-sm text-on-surface-variant opacity-50">        app_ctx = self._implicit_app_ctx_stack.pop()</div>
+<div class="px-sm text-on-surface-variant opacity-50 bg-error-container/20 border-l border-error/50 line-through">        # clear_request = False</div>
+<div class="px-sm text-on-surface-variant opacity-50">        try:</div>
+<div class="px-sm text-on-surface-variant opacity-50">            if exc is _sentinel:</div>
+<div class="px-sm text-on-surface-variant opacity-50">                exc = sys.exc_info()[1]</div>
+<div class="px-sm text-primary bg-surface-container-highest border border-primary relative z-10 py-xs shadow-[0_0_10px_rgba(255,255,255,0.1)]">            # FIX: Ensure async generators are properly closed during pop</div>
+<div class="px-sm text-primary bg-surface-container-highest border-l border-r border-primary relative z-10">            if hasattr(self.request, 'close'):</div>
+<div class="px-sm text-primary bg-surface-container-highest border-l border-r border-primary relative z-10">                import asyncio</div>
+<div class="px-sm text-primary bg-surface-container-highest border-l border-r border-b border-primary relative z-10">                asyncio.run(self.request.close())</div>
+</div>
+</div>
+</div>
+<!-- Console Sandbox -->
+<div class="mt-md border border-outline-variant rounded-sm overflow-hidden flex flex-col h-48">
+<div class="bg-surface-container-high border-b border-outline-variant px-sm py-xs flex justify-between items-center text-on-surface-variant font-code-sm text-code-sm">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-[14px]">terminal</span>
+<span>Docker Sandbox Pytest CLI</span>
+</div>
+</div>
+<div class="flex-1 bg-surface-container-lowest p-sm font-code-sm text-code-sm overflow-y-auto">
+<div class="text-on-surface-variant opacity-75">============================= test session starts ==============================</div>
+<div class="text-on-surface-variant">platform linux -- Python 3.11.4, pytest-7.4.0, pluggy-1.2.0</div>
+<div class="text-on-surface-variant">rootdir: /workspace/pallets/flask</div>
+<div class="text-on-surface-variant">collected 28 items</div>
+<br/>
+<div class="text-on-surface-variant">tests/test_async.py <span class="text-primary font-bold">............................</span> <span class="text-primary">[100%]</span></div>
+<br/>
+<div class="text-primary font-bold">============================== 28 passed in 1.42s ==============================</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Split (40%) -->
+<div class="flex-[2] flex flex-col min-w-0 bg-surface">
+<!-- Confidence Breakdown -->
+<div class="p-md border-b border-outline-variant">
+<div class="flex justify-between items-end mb-md">
+<div class="font-headline-md text-headline-md font-bold text-primary">CONFIDENCE ANALYSIS</div>
+<div class="font-headline-lg text-headline-lg font-black text-primary">94%</div>
+</div>
+<div class="flex flex-col gap-sm font-code-sm text-code-sm">
+<div class="flex items-center justify-between">
+<span class="text-on-surface-variant">Test Suite Pass</span>
+<span class="text-primary w-8 text-right">45%</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest">
+<div class="h-full bg-primary" style="width: 45%"></div>
+</div>
+<div class="flex items-center justify-between mt-sm">
+<span class="text-on-surface-variant">Static Analysis</span>
+<span class="text-primary w-8 text-right">25%</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest">
+<div class="h-full bg-primary" style="width: 25%"></div>
+</div>
+<div class="flex items-center justify-between mt-sm">
+<span class="text-on-surface-variant">AST Integrity</span>
+<span class="text-primary w-8 text-right">15%</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest">
+<div class="h-full bg-primary" style="width: 15%"></div>
+</div>
+<div class="flex items-center justify-between mt-sm">
+<span class="text-on-surface-variant">Agent Consensus</span>
+<span class="text-primary w-8 text-right">15%</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest">
+<div class="h-full bg-primary" style="width: 15%"></div>
+</div>
+</div>
+</div>
+<!-- Memory Match -->
+<div class="p-md border-b border-outline-variant bg-surface-container-low">
+<div class="font-label-caps text-label-caps text-on-surface-variant mb-sm">MEMORY MATCH</div>
+<div class="border border-outline-variant bg-surface p-sm">
+<div class="flex justify-between items-start mb-xs">
+<div class="font-code-md text-code-md text-primary font-bold">Fix #402 Async context</div>
+<div class="bg-surface-container-highest text-primary px-1 text-[10px] font-code-sm rounded-sm">SIMILARITY 91%</div>
+</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant">
+                            Previous pattern identified in `werkzeug/local.py`. Async generator cleanup during context pop requires explicit event loop interaction when `close()` is present on the request object.
+                        </div>
+</div>
+</div>
+<!-- GitHub Preview -->
+<div class="flex-1 p-md flex flex-col bg-surface">
+<div class="font-label-caps text-label-caps text-on-surface-variant mb-sm">ACTION REQUIRED</div>
+<div class="border border-outline-variant bg-surface-container flex-1 flex flex-col">
+<div class="bg-surface-container-high border-b border-outline-variant px-sm py-xs flex justify-between items-center text-on-surface-variant font-code-sm text-code-sm">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-[14px]">code</span>
+<span>GitHub PR Preview</span>
+</div>
+</div>
+<div class="p-md font-body-sm text-body-sm text-on-surface-variant flex-1 overflow-y-auto">
+<div class="font-bold text-primary mb-sm">Fix async context popping in Flask (#1084)</div>
+<div class="mb-md">
+<p class="mb-xs"><strong>Description:</strong></p>
+<p class="opacity-80">This PR addresses an issue where async generators tied to the request context were not being properly closed when the context was popped, leading to unclosed loop warnings and potential memory leaks.</p>
+</div>
+<div class="bg-surface border border-outline-variant p-sm font-code-sm text-code-sm">
+<div class="text-outline">🤖 FixForge AI Autonomous Fix</div>
+<div class="mt-xs text-primary">Generated based on diagnostic #402 similarity. Verified passing 28 async-related tests in sandbox.</div>
+</div>
+</div>
+<div class="p-sm border-t border-outline-variant flex gap-sm bg-surface">
+<button class="flex-1 bg-surface text-primary border border-outline-variant hover:bg-error-container hover:text-on-error hover:border-error transition-colors font-label-caps text-label-caps py-sm flex items-center justify-center gap-xs">
+<span class="material-symbols-outlined text-[16px]">close</span> REJECT
+                            </button>
+<button class="flex-1 bg-primary text-on-primary font-bold font-label-caps text-label-caps py-sm flex items-center justify-center gap-xs hover:bg-surface-container-lowest hover:text-primary hover:border hover:border-primary transition-all">
+<span class="material-symbols-outlined text-[16px]">check</span> APPROVE &amp; MERGE
+                            </button>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Footer -->
+<footer class="bg-surface-container-high dark:bg-surface-container-low border-t border-outline-variant fixed bottom-0 left-16 md:left-20 right-0 flex justify-between items-center px-md h-8 z-50">
+<div class="font-code-md text-code-md text-primary font-bold">
+            © 2024 FIXFORGE AI // SYSTEMS_READY
+        </div>
+<div class="flex gap-md font-code-sm text-code-sm uppercase">
+<a class="bg-primary text-on-primary px-2 transition-opacity duration-100 font-bold" href="#">DIFF</a>
+<a class="text-on-surface-variant px-2 hover:text-primary transition-opacity duration-100" href="#">TRACE</a>
+<a class="text-on-surface-variant px-2 hover:text-primary transition-opacity duration-100" href="#">CONSOLE</a>
+<a class="text-on-surface-variant px-2 hover:text-primary transition-opacity duration-100" href="#">ITERATIONS</a>
+</div>
+</footer>
+</body></html>
