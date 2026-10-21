@@ -1,57 +1,160 @@
-from core.state import AgentState
-from memory.chroma_client import chroma_manager
-from api.services.github import post_pr_review_comment
-import uuid
+"""
+reporter.py — ForgeReporter: formats the final Markdown review comment.
 
+The comment includes:
+  - Root cause classification and severity
+  - Verification status (passed / failed / unverified) with explicit UNVERIFIED badge
+  - Test execution output
+  - Confidence score, calibration band, and sub-signal breakdown
+  - Explicit disclaimer: score is NOT a correctness guarantee
+  - Proposed unified diff
+  - Dry-run vs real post is controlled by GITHUB_DRY_RUN in config (default: True)
+"""
+
+import uuid
+import logging
 from typing import Dict, Any
 
-async def run_reporter(state: AgentState) -> Dict[str, Any]:
-    """
-    ForgeReporter: Formats markdown review comment and saves verified resolution.
-    Posts the report natively back to GitHub via REST API.
-    """
-    if state.get('test_results', {}).get('passed'):
-        chroma_manager.add_historical_fix(
-            fix_id=str(uuid.uuid4()),
-            description=state.get('diagnosis_summary', ''),
-            metadata={"severity": state.get('severity', ''), "diff": state.get('candidate_diff', '')}
+from core.state import AgentState
+from core.config import settings
+from memory.chroma_client import chroma_manager
+from api.services.github import post_pr_review_comment
+
+logger = logging.getLogger(__name__)
+
+
+def _build_report(state: AgentState) -> str:
+    """Builds the full Markdown repair report."""
+    test_results = state.get("test_results", {})
+    is_unverified = test_results.get("status") == "unverified"
+    test_passed = test_results.get("passed", False)
+
+    if is_unverified:
+        verification_str = "⚠️ UNVERIFIED (Docker sandbox unavailable)"
+        unverified_warning = (
+            "\n> [!WARNING]\n"
+            "> **Sandbox Verification Skipped**: "
+            f"{test_results.get('error', 'Docker daemon unreachable')}  \n"
+            "> The confidence score below is computed WITHOUT test-result signal and "
+            "should be treated as LOW CONFIDENCE regardless of the displayed value.\n"
         )
-    
-    test_results = state.get('test_results', {})
-    is_unverified = test_results.get('status') == 'unverified'
-    test_passed_str = "UNVERIFIED (Sandbox Unavailable)" if is_unverified else ("YES" if test_results.get('passed') else "NO")
-    reason_note = f"\n> [!WARNING]\n> **Sandbox Verification Skipped**: {test_results.get('error', 'Docker daemon unreachable')}\n" if is_unverified else ""
+    elif test_passed:
+        verification_str = "✅ PASSED"
+        unverified_warning = ""
+    else:
+        verification_str = "❌ FAILED"
+        unverified_warning = ""
 
-    report = f"""# FixForge Autonomous Repair Report{" [UNVERIFIED]" if is_unverified else ""}
-{reason_note}
+    # Confidence breakdown
+    conf_score = state.get("confidence_score", 0.0)
+    breakdown = state.get("confidence_breakdown", {})
+    band = breakdown.get("calibration_band", "<50")
+    active_weights = breakdown.get("active_weights", {})
+    unavailable = breakdown.get("unavailable_signals", [])
+
+    sub_scores = []
+    signal_labels = {
+        "test_results": "Test Results (45%)",
+        "static_analysis": "Static Analysis (25%)",
+        "context_similarity": "Context Similarity (15%)",
+        "llm_consistency": "LLM Consistency (15%)",
+    }
+    for sig, label in signal_labels.items():
+        raw_key_map = {
+            "test_results": "test_pass_confidence",
+            "static_analysis": "compilation_confidence",
+            "context_similarity": "semantic_preservation_score",
+            "llm_consistency": "llm_consistency_score",
+        }
+        val = breakdown.get(raw_key_map.get(sig, sig))
+        if sig in unavailable:
+            sub_scores.append(f"  - {label}: **unavailable** (weight redistributed)")
+        elif val is not None:
+            sub_scores.append(f"  - {label}: `{val * 100:.1f}%`")
+    sub_score_block = "\n".join(sub_scores) if sub_scores else "  - No signals computed"
+
+    band_labels = {
+        "90-100": "🟢 High Confidence",
+        "75-89": "🟡 Medium-High Confidence",
+        "50-74": "🟠 Moderate Confidence",
+        "<50": "🔴 Low Confidence",
+    }
+    band_label = band_labels.get(band, band)
+
+    dry_run_badge = " [DRY-RUN]" if settings.GITHUB_DRY_RUN else ""
+
+    report = f"""# FixForge Autonomous Repair Report{" [UNVERIFIED]" if is_unverified else ""}{dry_run_badge}
+{unverified_warning}
 ## 🔍 Diagnosis
-**Category**: {state.get('failure_category')} | **Severity**: {state.get('severity')}
-{state.get('diagnosis_summary')}
+**Category**: `{state.get("failure_category", "Unknown")}` | **Severity**: `{state.get("severity", "Unknown")}`
 
-## 🔬 Execution & Verification
-- **Verification Status**: `{test_passed_str}`
-- **Retries Used**: `{state.get('retry_count', 0)}/3`
+{state.get("diagnosis_summary", "No diagnosis available.")}
 
-<details><summary><b>Execution Output</b></summary>
+## 🔬 Verification
+- **Status**: {verification_str}
+- **Retries Used**: `{state.get("retry_count", 0)}/{settings.MAX_RETRIES}`
+
+<details><summary><b>Test Execution Output</b></summary>
 
 ```
-{test_results.get('stdout') or test_results.get('stderr') or test_results.get('error', 'No output')}
+{test_results.get("stdout") or test_results.get("stderr") or test_results.get("error") or "No output captured."}
 ```
 </details>
 
-## 📊 Confidence Score: {state.get('confidence_score', 0.0) * 100:.1f}%
+## 📊 Confidence Score: `{conf_score * 100:.1f}%` — {band_label}
+
+> [!NOTE]
+> **Disclaimer**: The confidence score reflects signal agreement across test results, static analysis, historical context, and LLM consistency. It is **not a guarantee of correctness**. Human review of the proposed patch is required before merging.
+
+**Sub-signal breakdown** (active weights renormalized if signals unavailable):
+{sub_score_block}
+{"- Unavailable signals: " + ", ".join(unavailable) if unavailable else ""}
 
 ## 💻 Proposed Patch
 ```diff
-{state.get('candidate_diff')}
+{state.get("candidate_diff") or "No patch generated."}
 ```
+
+---
+*Generated by [FixForge AI](https://github.com/shreya05-j/FixForge) • {"SIMULATED (dry-run)" if settings.GITHUB_DRY_RUN else "Live"}*
 """
+    return report
+
+
+async def run_reporter(state: AgentState) -> Dict[str, Any]:
+    """
+    ForgeReporter: Formats Markdown review comment, stores verified fix in ChromaDB,
+    and posts (or dry-runs) the GitHub comment.
+    """
+    # Store verified fix in ChromaDB memory for future retrieval context.
+    if state.get("test_results", {}).get("passed"):
+        try:
+            chroma_manager.add_historical_fix(
+                fix_id=str(uuid.uuid4()),
+                description=state.get("diagnosis_summary", ""),
+                metadata={
+                    "severity": state.get("severity", ""),
+                    "diff": state.get("candidate_diff", "")[:2000],
+                    "repo": state.get("repo_name", ""),
+                },
+            )
+            logger.info("Verified fix stored in ChromaDB historical KB.")
+        except Exception as exc:
+            logger.warning("ChromaDB store failed (non-fatal): %s", exc)
+
+    report = _build_report(state)
 
     try:
-        await post_pr_review_comment(state.get('repo_name', ''), state.get('issue_id', ''), report)
-    except Exception as e:
-        print(f"Failed to post GitHub PR comment: {e}")
+        result = await post_pr_review_comment(
+            state.get("repo_name", ""),
+            state.get("issue_id", ""),
+            report,
+        )
+        logger.info("Reporter: GitHub comment result: %s", result)
+    except Exception as exc:
+        logger.error("Reporter: Failed to post GitHub comment: %s", exc)
 
     return {
-        'status': 'reporter_completed'
+        "status": "reporter_completed",
+        "github_report": report,
     }

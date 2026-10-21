@@ -1,6 +1,7 @@
 import uuid
 import re
 import time
+import asyncio
 import logging
 from datetime import datetime
 from typing import Optional
@@ -105,181 +106,188 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
     try:
         workflow = build_workflow()
         node_order = ["planner", "retriever", "diagnoser", "fixer", "verifier", "confidence_engine", "reporter"]
-        
-        async for output in workflow.astream(initial_state):
-            for node_name, node_output in output.items():
-                if isinstance(node_output, dict):
-                    merged_state.update(node_output)
-                
-                logger.info(f"Session {session_id_str} completed step: {node_name}")
-                
-                # Emit completion for current node
-                if node_name == "planner":
-                    stream_manager.publish_event(session_id_str, "node_progress", {
-                        "log_line": f"Plan formulated: {merged_state.get('plan', 'Investigate fault and apply patch.')[:120]}"
-                    })
-                    stream_manager.publish_event(session_id_str, "node_complete", {
-                        "agent": "planner",
-                        "latency": 0.8,
-                        "status": "completed",
-                        "output": {"plan": merged_state.get('plan', '')}
-                    })
-                    stream_manager.publish_event(session_id_str, "node_start", {
-                        "agent": "retriever",
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "input_summary": "Searching AST symbols and ChromaDB memory..."
-                    })
-                
-                elif node_name == "retriever":
-                    stream_manager.publish_event(session_id_str, "node_progress", {
-                        "log_line": "Retrieved AST context & historical fixes from memory."
-                    })
-                    stream_manager.publish_event(session_id_str, "node_complete", {
-                        "agent": "retriever",
-                        "latency": 0.6,
-                        "status": "completed",
-                        "output": {"ast_retrieved": True}
-                    })
-                    stream_manager.publish_event(session_id_str, "node_start", {
-                        "agent": "diagnoser",
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "input_summary": "Classifying failure category and severity..."
-                    })
+        step_start_time = time.time()
 
-                elif node_name == "diagnoser":
-                    category = merged_state.get('failure_category', 'Logic Error')
-                    severity = merged_state.get('severity', 'Medium')
-                    stream_manager.publish_event(session_id_str, "node_progress", {
-                        "log_line": f"Diagnosis: {category} (Severity: {severity})"
-                    })
-                    stream_manager.publish_event(session_id_str, "node_complete", {
-                        "agent": "diagnoser",
-                        "latency": 0.7,
-                        "status": "completed",
-                        "output": {"category": category, "severity": severity}
-                    })
-                    stream_manager.publish_event(session_id_str, "node_start", {
-                        "agent": "fixer",
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "input_summary": "Generating candidate unified diff patch..."
-                    })
-                    diff_preview = merged_state.get('candidate_diff', '')
-                    if diff_preview:
+        async def _run_stream():
+            nonlocal step_start_time
+            async for output in workflow.astream(initial_state):
+                for node_name, node_output in output.items():
+                    if isinstance(node_output, dict):
+                        merged_state.update(node_output)
+
+                    logger.info(f"Session {session_id_str} completed step: {node_name}")
+                    elapsed = round(max(0.01, time.time() - step_start_time), 2)
+                    step_start_time = time.time()
+
+                    # Emit completion for current node
+                    if node_name == "planner":
                         stream_manager.publish_event(session_id_str, "node_progress", {
-                            "chunk": diff_preview
-                        })
-
-                elif node_name == "fixer":
-                    diff = merged_state.get('candidate_diff', '')
-                    stream_manager.publish_event(session_id_str, "node_complete", {
-                        "agent": "fixer",
-                        "latency": 1.2,
-                        "status": "completed",
-                        "output": {"diff_preview": diff[:100]}
-                    })
-                    stream_manager.publish_event(session_id_str, "node_start", {
-                        "agent": "verifier",
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "input_summary": "Executing tests in isolated sandbox container..."
-                    })
-                    stream_manager.publish_event(session_id_str, "node_progress", {
-                        "log_line": "[pytest] Running sandbox test suite..."
-                    })
-
-                elif node_name == "verifier":
-                    v_results = merged_state.get('test_results', {})
-                    v_status = v_results.get('status', 'failed')
-                    passed = v_results.get('passed', False)
-                    v_err = v_results.get('error') or v_results.get('stderr') or ''
-
-                    if v_status == "unverified":
-                        stream_manager.publish_event(session_id_str, "node_progress", {
-                            "log_line": f"[WARNING] Docker daemon unreachable ({v_err}). Verification marked as UNVERIFIED."
+                            "log_line": f"Plan formulated: {merged_state.get('plan', 'Investigate fault and apply patch.')[:120]}"
                         })
                         stream_manager.publish_event(session_id_str, "node_complete", {
-                            "agent": "verifier",
-                            "latency": 0.5,
-                            "status": "unverified",
-                            "output": {"passed": False, "status": "unverified", "error": v_err}
-                        })
-                    elif v_status == "patch_failed":
-                        stream_manager.publish_event(session_id_str, "node_progress", {
-                            "log_line": f"[REJECTED] Candidate patch failed git apply --check: {v_err[:120]}"
-                        })
-                        stream_manager.publish_event(session_id_str, "node_complete", {
-                            "agent": "verifier",
-                            "latency": 0.8,
-                            "status": "failed",
-                            "output": {"passed": False, "status": "patch_failed", "error": v_err}
-                        })
-                        retry_cnt = merged_state.get('retry_count', 1)
-                        stream_manager.publish_event(session_id_str, "retry_loop", {
-                            "iteration": retry_cnt,
-                            "message": f"Attempt {retry_cnt} of 3 triggered due to git apply rejection"
-                        })
-                    elif not passed:
-                        stream_manager.publish_event(session_id_str, "node_progress", {
-                            "log_line": "[FAILED] Sandbox test suite execution failed."
-                        })
-                        stream_manager.publish_event(session_id_str, "node_complete", {
-                            "agent": "verifier",
-                            "latency": 1.1,
-                            "status": "failed",
-                            "output": {"passed": False, "status": "failed"}
-                        })
-                        retry_cnt = merged_state.get('retry_count', 1)
-                        stream_manager.publish_event(session_id_str, "retry_loop", {
-                            "iteration": retry_cnt,
-                            "message": f"Attempt {retry_cnt} of 3 triggered due to test verification failure"
-                        })
-                    else:
-                        stream_manager.publish_event(session_id_str, "node_progress", {
-                            "log_line": "[PASSED] Test verification succeeded in isolated sandbox."
-                        })
-                        stream_manager.publish_event(session_id_str, "node_complete", {
-                            "agent": "verifier",
-                            "latency": 1.1,
+                            "agent": "planner",
+                            "latency": elapsed,
                             "status": "completed",
-                            "output": {"passed": True, "status": "passed"}
+                            "output": {"plan": merged_state.get('plan', '')}
                         })
                         stream_manager.publish_event(session_id_str, "node_start", {
-                            "agent": "confidence_engine",
+                            "agent": "retriever",
                             "timestamp": datetime.utcnow().isoformat(),
-                            "input_summary": "Calculating confidence score breakdown..."
+                            "input_summary": "Searching AST symbols and ChromaDB memory..."
                         })
 
-                elif node_name == "confidence_engine":
-                    conf_score = float(merged_state.get('confidence_score', 0.0))
-                    conf_breakdown = merged_state.get('confidence_breakdown', {})
-                    band = conf_breakdown.get('calibration_band', '<50')
-                    stream_manager.publish_event(session_id_str, "node_progress", {
-                        "log_line": f"Confidence: {int(conf_score * 100)}% (SRS Band: {band})"
-                    })
-                    stream_manager.publish_event(session_id_str, "node_complete", {
-                        "agent": "confidence_engine",
-                        "latency": 0.4,
-                        "status": "completed",
-                        "output": {
-                            "score": conf_score,
-                            "calibration_band": band,
-                            "breakdown": conf_breakdown
-                        }
-                    })
-                    stream_manager.publish_event(session_id_str, "node_start", {
-                        "agent": "reporter",
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "input_summary": "Generating final GitHub review comment..."
-                    })
+                    elif node_name == "retriever":
+                        stream_manager.publish_event(session_id_str, "node_progress", {
+                            "log_line": "Retrieved AST context & historical fixes from memory."
+                        })
+                        stream_manager.publish_event(session_id_str, "node_complete", {
+                            "agent": "retriever",
+                            "latency": elapsed,
+                            "status": "completed",
+                            "output": {"ast_retrieved": True}
+                        })
+                        stream_manager.publish_event(session_id_str, "node_start", {
+                            "agent": "diagnoser",
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "input_summary": "Classifying failure category and severity..."
+                        })
 
-                elif node_name == "reporter":
-                    stream_manager.publish_event(session_id_str, "node_complete", {
-                        "agent": "reporter",
-                        "latency": 0.4,
-                        "status": "completed",
-                        "output": {"comment_ready": True}
-                    })
+                    elif node_name == "diagnoser":
+                        category = merged_state.get('failure_category', 'Logic Error')
+                        severity = merged_state.get('severity', 'Medium')
+                        stream_manager.publish_event(session_id_str, "node_progress", {
+                            "log_line": f"Diagnosis: {category} (Severity: {severity})"
+                        })
+                        stream_manager.publish_event(session_id_str, "node_complete", {
+                            "agent": "diagnoser",
+                            "latency": elapsed,
+                            "status": "completed",
+                            "output": {"category": category, "severity": severity}
+                        })
+                        stream_manager.publish_event(session_id_str, "node_start", {
+                            "agent": "fixer",
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "input_summary": "Generating candidate unified diff patch..."
+                        })
+                        diff_preview = merged_state.get('candidate_diff', '')
+                        if diff_preview:
+                            stream_manager.publish_event(session_id_str, "node_progress", {
+                                "chunk": diff_preview
+                            })
 
-        # Pipeline complete event
+                    elif node_name == "fixer":
+                        diff = merged_state.get('candidate_diff', '')
+                        stream_manager.publish_event(session_id_str, "node_complete", {
+                            "agent": "fixer",
+                            "latency": elapsed,
+                            "status": "completed",
+                            "output": {"diff_preview": diff[:100]}
+                        })
+                        stream_manager.publish_event(session_id_str, "node_start", {
+                            "agent": "verifier",
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "input_summary": "Executing tests in isolated sandbox container..."
+                        })
+                        stream_manager.publish_event(session_id_str, "node_progress", {
+                            "log_line": "[pytest] Running sandbox test suite..."
+                        })
+
+                    elif node_name == "verifier":
+                        v_results = merged_state.get('test_results', {})
+                        v_status = v_results.get('status', 'failed')
+                        passed = v_results.get('passed', False)
+                        v_err = v_results.get('error') or v_results.get('stderr') or ''
+
+                        if v_status == "unverified":
+                            stream_manager.publish_event(session_id_str, "node_progress", {
+                                "log_line": f"[WARNING] Docker daemon unreachable ({v_err}). Verification marked as UNVERIFIED."
+                            })
+                            stream_manager.publish_event(session_id_str, "node_complete", {
+                                "agent": "verifier",
+                                "latency": elapsed,
+                                "status": "unverified",
+                                "output": {"passed": False, "status": "unverified", "error": v_err}
+                            })
+                        elif v_status == "patch_failed":
+                            stream_manager.publish_event(session_id_str, "node_progress", {
+                                "log_line": f"[REJECTED] Candidate patch failed git apply --check: {v_err[:120]}"
+                            })
+                            stream_manager.publish_event(session_id_str, "node_complete", {
+                                "agent": "verifier",
+                                "latency": elapsed,
+                                "status": "failed",
+                                "output": {"passed": False, "status": "patch_failed", "error": v_err}
+                            })
+                            retry_cnt = merged_state.get('retry_count', 1)
+                            stream_manager.publish_event(session_id_str, "retry_loop", {
+                                "iteration": retry_cnt,
+                                "message": f"Attempt {retry_cnt} of 3 triggered due to git apply rejection"
+                            })
+                        elif not passed:
+                            stream_manager.publish_event(session_id_str, "node_progress", {
+                                "log_line": "[FAILED] Sandbox test suite execution failed."
+                            })
+                            stream_manager.publish_event(session_id_str, "node_complete", {
+                                "agent": "verifier",
+                                "latency": elapsed,
+                                "status": "failed",
+                                "output": {"passed": False, "status": "failed"}
+                            })
+                            retry_cnt = merged_state.get('retry_count', 1)
+                            stream_manager.publish_event(session_id_str, "retry_loop", {
+                                "iteration": retry_cnt,
+                                "message": f"Attempt {retry_cnt} of 3 triggered due to test verification failure"
+                            })
+                        else:
+                            stream_manager.publish_event(session_id_str, "node_progress", {
+                                "log_line": "[PASSED] Test verification succeeded in isolated sandbox."
+                            })
+                            stream_manager.publish_event(session_id_str, "node_complete", {
+                                "agent": "verifier",
+                                "latency": elapsed,
+                                "status": "completed",
+                                "output": {"passed": True, "status": "passed"}
+                            })
+                            stream_manager.publish_event(session_id_str, "node_start", {
+                                "agent": "confidence_engine",
+                                "timestamp": datetime.utcnow().isoformat(),
+                                "input_summary": "Calculating confidence score breakdown..."
+                            })
+
+                    elif node_name == "confidence_engine":
+                        conf_score = float(merged_state.get('confidence_score', 0.0))
+                        conf_breakdown = merged_state.get('confidence_breakdown', {})
+                        band = conf_breakdown.get('calibration_band', '<50')
+                        stream_manager.publish_event(session_id_str, "node_progress", {
+                            "log_line": f"Confidence: {int(conf_score * 100)}% (SRS Band: {band})"
+                        })
+                        stream_manager.publish_event(session_id_str, "node_complete", {
+                            "agent": "confidence_engine",
+                            "latency": elapsed,
+                            "status": "completed",
+                            "output": {
+                                "score": conf_score,
+                                "calibration_band": band,
+                                "breakdown": conf_breakdown
+                            }
+                        })
+                        stream_manager.publish_event(session_id_str, "node_start", {
+                            "agent": "reporter",
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "input_summary": "Generating final GitHub review comment..."
+                        })
+
+                    elif node_name == "reporter":
+                        stream_manager.publish_event(session_id_str, "node_complete", {
+                            "agent": "reporter",
+                            "latency": elapsed,
+                            "status": "completed",
+                            "output": {"comment_ready": True}
+                        })
+
+        timeout_sec = float(getattr(settings, "WORKFLOW_TIMEOUT_SEC", 300))
+        await asyncio.wait_for(_run_stream(), timeout=timeout_sec)
+# Pipeline complete event
         final_diff = merged_state.get("candidate_diff") or ""
         final_score = float(merged_state.get("confidence_score") or 0.0)
 

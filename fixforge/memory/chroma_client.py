@@ -16,18 +16,26 @@ class ChromaManager:
         )
         
     def query_history(self, query_text: str, n_results: int = 3) -> List[Dict[str, Any]]:
-        results = self.history_kb.query(
-            query_texts=[query_text],
-            n_results=n_results
-        )
-        # Flatten results
-        if not results['documents']:
+        try:
+            count = self.history_kb.count()
+            if count == 0:
+                return []
+            actual_n = min(n_results, count)
+            results = self.history_kb.query(
+                query_texts=[query_text],
+                n_results=actual_n
+            )
+            # Flatten results
+            if not results.get('documents') or not results['documents'][0]:
+                return []
+            out = []
+            distances = results.get('distances', [[]])[0] if results.get('distances') else []
+            metadatas = results.get('metadatas', [[]])[0] if results.get('metadatas') else []
+            for i, (doc, meta) in enumerate(zip(results['documents'][0], metadatas)):
+                dist = distances[i] if i < len(distances) else None
+                out.append({"document": doc, "metadata": meta, "distance": dist})
+            return out
+        except Exception:
             return []
-        out = []
-        distances = results.get('distances', [[]])[0] if results.get('distances') else []
-        for i, (doc, meta) in enumerate(zip(results['documents'][0], results['metadatas'][0])):
-            dist = distances[i] if i < len(distances) else None
-            out.append({"document": doc, "metadata": meta, "distance": dist})
-        return out
 
 chroma_manager = ChromaManager()

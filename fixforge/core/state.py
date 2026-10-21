@@ -2,6 +2,8 @@ from typing import TypedDict, List, Dict, Any, Optional, Literal
 
 class AgentState(TypedDict):
     repo_name: str
+    repo_url: Optional[str]
+    branch: Optional[str]
     issue_id: str
     issue_title: str
     issue_body: str
