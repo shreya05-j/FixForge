@@ -169,10 +169,20 @@ export default function App() {
 
       {/* TopNavBar */}
       <header className="bg-background dark:bg-background docked full-width top-0 border-b border-border-muted flex justify-between items-center w-full px-margin-desktop h-16 shrink-0 z-50">
-        <div className="flex items-center gap-8">
+        <div className="flex items-center gap-4">
           <div className="font-headline-md text-headline-md font-bold text-primary dark:text-primary tracking-tight">
             FixForge AI
           </div>
+          {streamState.isDemo && (
+            <span
+              id="simulated-badge"
+              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/50 tracking-widest uppercase"
+              title="This session is running in offline simulated demo mode"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+              SIMULATED
+            </span>
+          )}
           
           <select 
             className="hidden lg:block bg-surface-deep border border-border-muted text-on-surface font-body-sm text-body-sm px-3 py-1.5 focus:border-primary focus:outline-none transition-colors rounded-none"
@@ -201,7 +211,7 @@ export default function App() {
             <input 
               className="w-full bg-surface-deep border border-border-muted text-on-surface font-body-sm text-body-sm pl-9 pr-3 py-1.5 focus:border-primary focus:outline-none focus:ring-0 transition-colors rounded-none placeholder:text-text-muted" 
               placeholder="Enter Session UUID..." 
-              type="text"
+              type="text" 
               value={sessionId}
               onChange={(e) => setSessionId(e.target.value)}
             />
@@ -239,11 +249,13 @@ export default function App() {
 
       {/* Offline Demo Banner */}
       {streamState.isDemo && (
-        <div className="bg-primary/10 border-b border-primary text-primary px-4 py-1 text-center font-code-sm text-xs flex justify-center items-center gap-2">
-          <span className="material-symbols-outlined text-[14px]">offline_bolt</span>
-          Running in Offline Demo Mode.
-          <button onClick={streamState.replayDemo} className="ml-2 underline font-bold hover:text-white flex items-center gap-1">
-            <span className="material-symbols-outlined text-[14px]">play_circle</span> Play Live Run
+        <div className="bg-amber-500/10 border-b border-amber-500/40 text-amber-300 px-4 py-1.5 text-center font-code-sm text-xs flex justify-center items-center gap-3">
+          <span className="px-1.5 py-0.5 rounded bg-amber-500 text-black font-black text-[10px] tracking-wider">
+            SIMULATED
+          </span>
+          <span>Running in Offline Simulated Demo Mode (no live LLM/Docker calls).</span>
+          <button onClick={streamState.replayDemo} className="ml-2 underline font-bold hover:text-white flex items-center gap-1 text-amber-200">
+            <span className="material-symbols-outlined text-[14px]">play_circle</span> Replay Simulation
           </button>
         </div>
       )}

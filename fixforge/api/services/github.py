@@ -8,6 +8,7 @@ Default: GITHUB_DRY_RUN=true.
 To enable live posting set GITHUB_DRY_RUN=false in .env AND provide GITHUB_TOKEN.
 """
 
+import sys
 import logging
 import httpx
 from core.config import settings
@@ -36,9 +37,10 @@ async def post_pr_review_comment(repo_name: str, issue_number: str, markdown_bod
             "[GITHUB DRY-RUN] Would POST to: %s\n%s\n%s\n%s",
             url, DRY_RUN_SEPARATOR, markdown_body, DRY_RUN_SEPARATOR,
         )
-        print(f"\n[GITHUB DRY-RUN] Would POST comment to {url}")
-        print(DRY_RUN_SEPARATOR)
-        print(markdown_body)
+        try:
+            print(markdown_body)
+        except UnicodeEncodeError:
+            print(markdown_body.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8", errors="replace"))
         print(DRY_RUN_SEPARATOR)
         return {"dry_run": True, "would_post_to": url, "body_length": len(markdown_body)}
 

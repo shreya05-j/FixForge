@@ -1,0 +1,27 @@
+{
+  "0": {
+    "config_name": "Full Formula (45% Test, 25% Static, 15% Context, 15% Consistency)",
+    "pearson_r": 0.0,
+    "spearman_r": 0.0
+  },
+  "1": {
+    "config_name": "Without Test Evidence (w/o S_test)",
+    "pearson_r": 0.0,
+    "spearman_r": 0.0
+  },
+  "2": {
+    "config_name": "Without Static Analysis (w/o S_static)",
+    "pearson_r": 0.0,
+    "spearman_r": 0.0
+  },
+  "3": {
+    "config_name": "Without Context Relevance (w/o S_context)",
+    "pearson_r": 0.0,
+    "spearman_r": 0.0
+  },
+  "4": {
+    "config_name": "Without Self-Consistency (w/o S_consistency)",
+    "pearson_r": 0.0,
+    "spearman_r": 0.0
+  }
+}

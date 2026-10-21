@@ -245,16 +245,16 @@ const StreamingCursor: React.FC = () => (
 interface DiffViewerProps {
   diff: string | null;
   isStreaming?: boolean;
-  viewMode: 'unified' | 'split';
-  onCopy: () => void;
-  onDownload: () => void;
-  onViewModeChange: (mode: 'unified' | 'split') => void;
+  viewMode?: 'unified' | 'split';
+  onCopy?: () => void;
+  onDownload?: () => void;
+  onViewModeChange?: (mode: 'unified' | 'split') => void;
 }
 
 const DiffViewer: React.FC<DiffViewerProps> = ({
   diff,
   isStreaming = false,
-  viewMode,
+  viewMode = 'unified',
   onCopy,
   onDownload,
   onViewModeChange,
@@ -296,7 +296,7 @@ const DiffViewer: React.FC<DiffViewerProps> = ({
           {(['unified', 'split'] as const).map(mode => (
             <button
               key={mode}
-              onClick={() => onViewModeChange(mode)}
+              onClick={() => onViewModeChange?.(mode)}
               className={`px-3 py-0.5 text-[11px] font-mono capitalize transition-colors ${
                 viewMode === mode
                   ? 'bg-[#1f6feb] text-white'

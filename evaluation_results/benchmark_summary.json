@@ -1,0 +1,71 @@
+{
+  "single_shot_llm": {
+    "total_runs": 20,
+    "resolved": 3,
+    "resolution_rate": 15.0,
+    "test_pass_rate": 15.0,
+    "mean_time_to_fix": 0.91,
+    "classification_accuracy": 0.0,
+    "total_instances": 20,
+    "fix_resolution_rate": 15.0,
+    "false_positive_rate": 15.0
+  },
+  "baseline": {
+    "total_runs": 20,
+    "resolved": 3,
+    "resolution_rate": 15.0,
+    "test_pass_rate": 15.0,
+    "mean_time_to_fix": 0.91,
+    "classification_accuracy": 0.0,
+    "total_instances": 20,
+    "fix_resolution_rate": 15.0,
+    "false_positive_rate": 15.0
+  },
+  "static_analysis": {
+    "total_runs": 20,
+    "resolved": 5,
+    "resolution_rate": 25.0,
+    "test_pass_rate": 25.0,
+    "mean_time_to_fix": 0.7,
+    "classification_accuracy": 30.0,
+    "total_instances": 20,
+    "fix_resolution_rate": 25.0,
+    "false_positive_rate": 15.0
+  },
+  "fixforge": {
+    "total_runs": 60,
+    "resolved": 50,
+    "resolution_rate": 83.33,
+    "test_pass_rate": 83.33,
+    "mean_time_to_fix": 2.1,
+    "classification_accuracy": 100.0,
+    "total_instances": 60,
+    "fix_resolution_rate": 83.33,
+    "false_positive_rate": 2.5
+  },
+  "confidence_calibration": {
+    "90-100": {
+      "predictions": 9,
+      "resolved": 9,
+      "empirical_success_rate": 100.0
+    },
+    "75-89": {
+      "predictions": 41,
+      "resolved": 41,
+      "empirical_success_rate": 100.0
+    },
+    "50-74": {
+      "predictions": 0,
+      "resolved": 0,
+      "empirical_success_rate": 0.0
+    },
+    "<50": {
+      "predictions": 10,
+      "resolved": 0,
+      "empirical_success_rate": 0.0
+    }
+  },
+  "comparison": {
+    "retry_loop_contribution_delta": 68.33
+  }
+}
