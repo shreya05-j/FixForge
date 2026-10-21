@@ -17,20 +17,25 @@ async def run_reporter(state: AgentState) -> Dict[str, Any]:
             metadata={"severity": state.get('severity', ''), "diff": state.get('candidate_diff', '')}
         )
     
-    report = f"""# FixForge Autonomous Repair Report
+    test_results = state.get('test_results', {})
+    is_unverified = test_results.get('status') == 'unverified'
+    test_passed_str = "UNVERIFIED (Sandbox Unavailable)" if is_unverified else ("YES" if test_results.get('passed') else "NO")
+    reason_note = f"\n> [!WARNING]\n> **Sandbox Verification Skipped**: {test_results.get('error', 'Docker daemon unreachable')}\n" if is_unverified else ""
 
+    report = f"""# FixForge Autonomous Repair Report{" [UNVERIFIED]" if is_unverified else ""}
+{reason_note}
 ## 🔍 Diagnosis
 **Category**: {state.get('failure_category')} | **Severity**: {state.get('severity')}
 {state.get('diagnosis_summary')}
 
 ## 🔬 Execution & Verification
-- **Test Passed**: `{"YES" if state.get('test_results', {}).get('passed') else "NO"}`
+- **Verification Status**: `{test_passed_str}`
 - **Retries Used**: `{state.get('retry_count', 0)}/3`
 
-<details><summary><b>Pytest Output</b></summary>
+<details><summary><b>Execution Output</b></summary>
 
 ```
-{state.get('test_results', {}).get('stdout', '')}
+{test_results.get('stdout') or test_results.get('stderr') or test_results.get('error', 'No output')}
 ```
 </details>
 

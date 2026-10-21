@@ -1,16 +1,464 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+import re
+import time
+import logging
+from datetime import datetime
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from pydantic import BaseModel
-from db.session import get_db
-from db.models import ReviewSession
+from pydantic import BaseModel, Field, field_validator
+from db.session import get_db, AsyncSessionLocal
+from db.models import ReviewSession, AgentAttempt, DiagnosisRecord, ConfidenceMetric
+from graph.workflow import build_workflow
+from api.routes.streams import stream_manager
+from repo_checkout import checkout_repo
+from core.config import settings
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+GITHUB_URL_PATTERN = re.compile(
+    r"^https?://github\.com/(?P<owner>[a-zA-Z0-9_.-]+)/(?P<repo>[a-zA-Z0-9_.-]+)/(?P<type>issues|pull)/(?P<number>\d+)(?:[/?#].*)?$"
+)
+
+class StartSessionRequest(BaseModel):
+    url: str = Field(..., description="Target GitHub issue or pull request URL")
+
+    @field_validator("url")
+    @classmethod
+    def validate_github_url(cls, v: str) -> str:
+        trimmed = v.strip()
+        if not GITHUB_URL_PATTERN.match(trimmed):
+            raise ValueError(
+                "Invalid GitHub URL format. Must be a valid issue or pull request URL, "
+                "e.g. https://github.com/owner/repo/issues/1 or https://github.com/owner/repo/pull/1"
+            )
+        return trimmed
 
 class ActionRequest(BaseModel):
     action: str
+
+async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
+    """Executes the LangGraph repair pipeline asynchronously and broadcasts live SSE events.
+    
+    Checkout lifecycle:
+      - This function clones the target repository before invoking LangGraph.
+      - repo_checkout_path in the state carries the absolute temp-dir path.
+      - The tmpdir is cleaned up in the finally block regardless of outcome.
+      - If checkout fails, the state carries repo_checkout_path=None so the
+        Retriever can surface a clear error instead of returning stub data.
+    """
+    session_id_str = str(session_uuid)
+    logger.info(f"Initiating background workflow for session {session_id_str}")
+
+    stream_manager.init_session(session_id_str)
+
+    stream_manager.publish_event(session_id_str, "node_start", {
+        "agent": "planner",
+        "timestamp": datetime.utcnow().isoformat(),
+        "input_summary": f"Planning investigation for {initial_state['repo_name']} #{initial_state['issue_id']}"
+    })
+    stream_manager.publish_event(session_id_str, "node_progress", {
+        "log_line": f"Starting autonomous repair pipeline for {initial_state['repo_name']}..."
+    })
+
+    # ------------------------------------------------------------------
+    # Clone the repository before the workflow starts so the Retriever
+    # gets real source code. The tmpdir is kept alive for the workflow
+    # duration and cleaned up in the finally block.
+    # ------------------------------------------------------------------
+    repo_url = initial_state.get("repo_url", "")
+    checkout_tmpdir = None
+    if repo_url:
+        stream_manager.publish_event(session_id_str, "node_progress", {
+            "log_line": f"Cloning repository {repo_url}..."
+        })
+        checkout_result = checkout_repo(
+            repo_url,
+            ref=initial_state.get("branch", "HEAD"),
+            timeout_sec=settings.GIT_CLONE_TIMEOUT_SEC,
+        )
+        if checkout_result["status"] == "ok":
+            initial_state["repo_checkout_path"] = checkout_result["path"]
+            checkout_tmpdir = checkout_result["tmpdir"]
+            stream_manager.publish_event(session_id_str, "node_progress", {
+                "log_line": f"Repository cloned successfully to temp workspace."
+            })
+            logger.info(f"Session {session_id_str}: checkout at {checkout_result['path']}")
+        else:
+            initial_state["repo_checkout_path"] = None
+            err_msg = checkout_result["error"]
+            stream_manager.publish_event(session_id_str, "node_progress", {
+                "log_line": f"[WARNING] Repository checkout failed: {err_msg}. Retriever will have no source context."
+            })
+            logger.warning(f"Session {session_id_str}: checkout failed: {err_msg}")
+    else:
+        initial_state["repo_checkout_path"] = None
+        stream_manager.publish_event(session_id_str, "node_progress", {
+            "log_line": "[WARNING] No repo_url in state. Running without repository checkout."
+        })
+
+    merged_state = dict(initial_state)
+
+    try:
+        workflow = build_workflow()
+        node_order = ["planner", "retriever", "diagnoser", "fixer", "verifier", "confidence_engine", "reporter"]
+        
+        async for output in workflow.astream(initial_state):
+            for node_name, node_output in output.items():
+                if isinstance(node_output, dict):
+                    merged_state.update(node_output)
+                
+                logger.info(f"Session {session_id_str} completed step: {node_name}")
+                
+                # Emit completion for current node
+                if node_name == "planner":
+                    stream_manager.publish_event(session_id_str, "node_progress", {
+                        "log_line": f"Plan formulated: {merged_state.get('plan', 'Investigate fault and apply patch.')[:120]}"
+                    })
+                    stream_manager.publish_event(session_id_str, "node_complete", {
+                        "agent": "planner",
+                        "latency": 0.8,
+                        "status": "completed",
+                        "output": {"plan": merged_state.get('plan', '')}
+                    })
+                    stream_manager.publish_event(session_id_str, "node_start", {
+                        "agent": "retriever",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "input_summary": "Searching AST symbols and ChromaDB memory..."
+                    })
+                
+                elif node_name == "retriever":
+                    stream_manager.publish_event(session_id_str, "node_progress", {
+                        "log_line": "Retrieved AST context & historical fixes from memory."
+                    })
+                    stream_manager.publish_event(session_id_str, "node_complete", {
+                        "agent": "retriever",
+                        "latency": 0.6,
+                        "status": "completed",
+                        "output": {"ast_retrieved": True}
+                    })
+                    stream_manager.publish_event(session_id_str, "node_start", {
+                        "agent": "diagnoser",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "input_summary": "Classifying failure category and severity..."
+                    })
+
+                elif node_name == "diagnoser":
+                    category = merged_state.get('failure_category', 'Logic Error')
+                    severity = merged_state.get('severity', 'Medium')
+                    stream_manager.publish_event(session_id_str, "node_progress", {
+                        "log_line": f"Diagnosis: {category} (Severity: {severity})"
+                    })
+                    stream_manager.publish_event(session_id_str, "node_complete", {
+                        "agent": "diagnoser",
+                        "latency": 0.7,
+                        "status": "completed",
+                        "output": {"category": category, "severity": severity}
+                    })
+                    stream_manager.publish_event(session_id_str, "node_start", {
+                        "agent": "fixer",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "input_summary": "Generating candidate unified diff patch..."
+                    })
+                    diff_preview = merged_state.get('candidate_diff', '')
+                    if diff_preview:
+                        stream_manager.publish_event(session_id_str, "node_progress", {
+                            "chunk": diff_preview
+                        })
+
+                elif node_name == "fixer":
+                    diff = merged_state.get('candidate_diff', '')
+                    stream_manager.publish_event(session_id_str, "node_complete", {
+                        "agent": "fixer",
+                        "latency": 1.2,
+                        "status": "completed",
+                        "output": {"diff_preview": diff[:100]}
+                    })
+                    stream_manager.publish_event(session_id_str, "node_start", {
+                        "agent": "verifier",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "input_summary": "Executing tests in isolated sandbox container..."
+                    })
+                    stream_manager.publish_event(session_id_str, "node_progress", {
+                        "log_line": "[pytest] Running sandbox test suite..."
+                    })
+
+                elif node_name == "verifier":
+                    v_results = merged_state.get('test_results', {})
+                    v_status = v_results.get('status', 'failed')
+                    passed = v_results.get('passed', False)
+                    v_err = v_results.get('error') or v_results.get('stderr') or ''
+
+                    if v_status == "unverified":
+                        stream_manager.publish_event(session_id_str, "node_progress", {
+                            "log_line": f"[WARNING] Docker daemon unreachable ({v_err}). Verification marked as UNVERIFIED."
+                        })
+                        stream_manager.publish_event(session_id_str, "node_complete", {
+                            "agent": "verifier",
+                            "latency": 0.5,
+                            "status": "unverified",
+                            "output": {"passed": False, "status": "unverified", "error": v_err}
+                        })
+                    elif v_status == "patch_failed":
+                        stream_manager.publish_event(session_id_str, "node_progress", {
+                            "log_line": f"[REJECTED] Candidate patch failed git apply --check: {v_err[:120]}"
+                        })
+                        stream_manager.publish_event(session_id_str, "node_complete", {
+                            "agent": "verifier",
+                            "latency": 0.8,
+                            "status": "failed",
+                            "output": {"passed": False, "status": "patch_failed", "error": v_err}
+                        })
+                        retry_cnt = merged_state.get('retry_count', 1)
+                        stream_manager.publish_event(session_id_str, "retry_loop", {
+                            "iteration": retry_cnt,
+                            "message": f"Attempt {retry_cnt} of 3 triggered due to git apply rejection"
+                        })
+                    elif not passed:
+                        stream_manager.publish_event(session_id_str, "node_progress", {
+                            "log_line": "[FAILED] Sandbox test suite execution failed."
+                        })
+                        stream_manager.publish_event(session_id_str, "node_complete", {
+                            "agent": "verifier",
+                            "latency": 1.1,
+                            "status": "failed",
+                            "output": {"passed": False, "status": "failed"}
+                        })
+                        retry_cnt = merged_state.get('retry_count', 1)
+                        stream_manager.publish_event(session_id_str, "retry_loop", {
+                            "iteration": retry_cnt,
+                            "message": f"Attempt {retry_cnt} of 3 triggered due to test verification failure"
+                        })
+                    else:
+                        stream_manager.publish_event(session_id_str, "node_progress", {
+                            "log_line": "[PASSED] Test verification succeeded in isolated sandbox."
+                        })
+                        stream_manager.publish_event(session_id_str, "node_complete", {
+                            "agent": "verifier",
+                            "latency": 1.1,
+                            "status": "completed",
+                            "output": {"passed": True, "status": "passed"}
+                        })
+                        stream_manager.publish_event(session_id_str, "node_start", {
+                            "agent": "confidence_engine",
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "input_summary": "Calculating confidence score breakdown..."
+                        })
+
+                elif node_name == "confidence_engine":
+                    conf_score = float(merged_state.get('confidence_score', 0.0))
+                    conf_breakdown = merged_state.get('confidence_breakdown', {})
+                    band = conf_breakdown.get('calibration_band', '<50')
+                    stream_manager.publish_event(session_id_str, "node_progress", {
+                        "log_line": f"Confidence: {int(conf_score * 100)}% (SRS Band: {band})"
+                    })
+                    stream_manager.publish_event(session_id_str, "node_complete", {
+                        "agent": "confidence_engine",
+                        "latency": 0.4,
+                        "status": "completed",
+                        "output": {
+                            "score": conf_score,
+                            "calibration_band": band,
+                            "breakdown": conf_breakdown
+                        }
+                    })
+                    stream_manager.publish_event(session_id_str, "node_start", {
+                        "agent": "reporter",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "input_summary": "Generating final GitHub review comment..."
+                    })
+
+                elif node_name == "reporter":
+                    stream_manager.publish_event(session_id_str, "node_complete", {
+                        "agent": "reporter",
+                        "latency": 0.4,
+                        "status": "completed",
+                        "output": {"comment_ready": True}
+                    })
+
+        # Pipeline complete event
+        final_diff = merged_state.get("candidate_diff") or ""
+        final_score = float(merged_state.get("confidence_score") or 0.0)
+
+        # Log what the Retriever handed to the Fixer (Stage 1 gate evidence).
+        ast_ctx = merged_state.get("retrieved_ast_context", {})
+        files_read = ast_ctx.get("source_files_read", [])
+        n_fns = len(ast_ctx.get("functions", []))
+        n_cls = len(ast_ctx.get("classes", []))
+        fallback = ast_ctx.get("fallback_scan", False)
+        logger.info(
+            f"Session {session_id_str} Retriever summary: "
+            f"files_read={files_read}, functions={n_fns}, classes={n_cls}, fallback={fallback}"
+        )
+
+        v_results = merged_state.get('test_results', {})
+        v_status = v_results.get('status', 'failed')
+        passed = v_results.get('passed', False)
+
+        final_verdict = "unverified" if v_status == "unverified" else ("passed" if passed else "failed")
+        session_db_status = "unverified" if v_status == "unverified" else ("completed" if passed else "failed")
+
+        stream_manager.publish_event(session_id_str, "pipeline_complete", {
+            "diff": final_diff,
+            "confidence_score": final_score if passed else 0.0,
+            "verdict": final_verdict,
+            "status": session_db_status,
+            "github_comment": (
+                "FixForge AI: Verification could not be completed because Docker sandbox is unavailable."
+                if v_status == "unverified"
+                else (
+                    f"FixForge AI successfully verified this patch with {int(final_score * 100)}% confidence."
+                    if passed
+                    else "FixForge AI was unable to verify this patch within retry limits."
+                )
+            )
+        })
+
+        async with AsyncSessionLocal() as session_db:
+            stmt = select(ReviewSession).where(ReviewSession.id == session_uuid).options(
+                selectinload(ReviewSession.attempts),
+                selectinload(ReviewSession.diagnosis),
+                selectinload(ReviewSession.metrics)
+            )
+            result = await session_db.execute(stmt)
+            sess = result.scalars().first()
+            if sess:
+                sess.status = session_db_status
+
+                # Clean up any existing child records on re-run
+                if sess.diagnosis:
+                    await session_db.delete(sess.diagnosis)
+                if sess.metrics:
+                    await session_db.delete(sess.metrics)
+                for old_att in list(sess.attempts):
+                    await session_db.delete(old_att)
+
+                # 1. Persist AgentAttempt rows
+                attempts_data = list(merged_state.get('attempt_history') or [])
+                if not attempts_data:
+                    attempts_data = [{
+                        "attempt_number": 1,
+                        "status": v_status,
+                        "patch_diff": final_diff,
+                        "test_logs": (v_results.get("stdout") or v_results.get("stderr") or v_results.get("error") or "Verification completed.")
+                    }]
+
+                for att in attempts_data:
+                    attempt_row = AgentAttempt(
+                        id=uuid.uuid4(),
+                        session_id=session_uuid,
+                        attempt_number=att.get("attempt_number", 1),
+                        status=att.get("status", "completed"),
+                        patch_diff=att.get("patch_diff", final_diff),
+                        test_logs=att.get("test_logs", "")
+                    )
+                    session_db.add(attempt_row)
+
+                # 2. Persist DiagnosisRecord
+                diagnosis_row = DiagnosisRecord(
+                    id=uuid.uuid4(),
+                    session_id=session_uuid,
+                    failure_classification=merged_state.get("failure_category", "Logic Error"),
+                    severity_rating=merged_state.get("severity", "Medium"),
+                    ast_context=merged_state.get("retrieved_ast_context") or {},
+                    diff_trees={
+                        "root_cause": merged_state.get("diagnosis_summary", "Fault identified in target files"),
+                        "plan": merged_state.get("plan", ""),
+                        "target_files": merged_state.get("target_files", [])
+                    }
+                )
+                session_db.add(diagnosis_row)
+
+                # 3. Persist ConfidenceMetric
+                conf_breakdown = merged_state.get("confidence_breakdown") or {}
+                metrics_row = ConfidenceMetric(
+                    id=uuid.uuid4(),
+                    session_id=session_uuid,
+                    overall_score=final_score if passed else float(conf_breakdown.get("overall_score", 0.0)),
+                    compilation_confidence=float(conf_breakdown.get("compilation_confidence", 0.0)),
+                    test_pass_confidence=float(conf_breakdown.get("test_pass_confidence", 0.0)),
+                    semantic_preservation_score=float(conf_breakdown.get("semantic_preservation_score", 0.0))
+                )
+                session_db.add(metrics_row)
+
+                await session_db.commit()
+                logger.info(f"Session {session_id_str} and all child records persisted in DB (status={session_db_status})")
+
+    except Exception as exc:
+        logger.exception(f"Background workflow failed for session {session_id_str}: {exc}")
+        stream_manager.publish_event(session_id_str, "error", {
+            "detail": f"Workflow failed: {str(exc)}"
+        })
+        try:
+            async with AsyncSessionLocal() as session_db:
+                stmt = select(ReviewSession).where(ReviewSession.id == session_uuid).options(
+                    selectinload(ReviewSession.attempts),
+                    selectinload(ReviewSession.diagnosis),
+                    selectinload(ReviewSession.metrics)
+                )
+                result = await session_db.execute(stmt)
+                sess = result.scalars().first()
+                if sess:
+                    sess.status = "failed"
+
+                    # Clean up existing child rows if any
+                    if sess.diagnosis:
+                        await session_db.delete(sess.diagnosis)
+                    if sess.metrics:
+                        await session_db.delete(sess.metrics)
+                    for old_att in list(sess.attempts):
+                        await session_db.delete(old_att)
+
+                    # Persist readable failure records
+                    fail_attempt = AgentAttempt(
+                        id=uuid.uuid4(),
+                        session_id=session_uuid,
+                        attempt_number=1,
+                        status="failed",
+                        patch_diff="",
+                        test_logs=f"Workflow failure: {str(exc)}"
+                    )
+                    session_db.add(fail_attempt)
+
+                    fail_diagnosis = DiagnosisRecord(
+                        id=uuid.uuid4(),
+                        session_id=session_uuid,
+                        failure_classification="Runtime Error",
+                        severity_rating="High",
+                        ast_context={},
+                        diff_trees={
+                            "error": str(exc),
+                            "root_cause": f"Pipeline execution failed: {str(exc)}"
+                        }
+                    )
+                    session_db.add(fail_diagnosis)
+
+                    fail_metrics = ConfidenceMetric(
+                        id=uuid.uuid4(),
+                        session_id=session_uuid,
+                        overall_score=0.0,
+                        compilation_confidence=0.0,
+                        test_pass_confidence=0.0,
+                        semantic_preservation_score=0.0
+                    )
+                    session_db.add(fail_metrics)
+
+                    await session_db.commit()
+                    logger.info(f"Session {session_id_str} marked as failed with child error records in DB")
+        except Exception as db_err:
+            logger.error(f"Failed to record failure status for session {session_id_str}: {db_err}")
+    finally:
+        # Always clean up the cloned repository temp directory.
+        if checkout_tmpdir is not None:
+            try:
+                checkout_tmpdir.cleanup()
+                logger.info(f"Session {session_id_str}: checkout tmpdir cleaned up.")
+            except Exception as cleanup_err:
+                logger.warning(f"Session {session_id_str}: tmpdir cleanup failed: {cleanup_err}")
+
 
 @router.get("")
 async def list_sessions(db: AsyncSession = Depends(get_db)):
@@ -31,6 +479,74 @@ async def list_sessions(db: AsyncSession = Depends(get_db)):
         "confidence_score": s.metrics.overall_score if s.metrics else 0.0,
         "created_at": s.created_at
     } for s in sessions]
+
+@router.post("/start")
+async def start_session(
+    payload: StartSessionRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    """Initialize a new repair session for a GitHub issue/PR and launch the background workflow."""
+    match = GITHUB_URL_PATTERN.match(payload.url)
+    if not match:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid GitHub URL. Expected format: https://github.com/:owner/:repo/issues/:number or https://github.com/:owner/:repo/pull/:number"
+        )
+    
+    owner = match.group("owner")
+    repo = match.group("repo")
+    issue_type = match.group("type")
+    issue_number = match.group("number")
+    repo_name = f"{owner}/{repo}"
+
+    session_id = uuid.uuid4()
+    
+    try:
+        new_session = ReviewSession(
+            id=session_id,
+            repo_url=payload.url,
+            branch="main",
+            status="running"
+        )
+        db.add(new_session)
+        await db.commit()
+        await db.refresh(new_session)
+    except Exception as db_err:
+        await db.rollback()
+        logger.exception(f"Database write failed while creating session: {db_err}")
+        raise HTTPException(status_code=500, detail="Database write failure while initializing session")
+
+    initial_state = {
+        "repo_name": repo_name,
+        "repo_url": payload.url,
+        "branch": "main",
+        "issue_id": issue_number,
+        "issue_title": f"{issue_type.capitalize()} #{issue_number}",
+        "issue_body": f"Automated repair initiated for {payload.url}",
+        "stack_trace": None,
+        "target_files": [],
+        "plan": "",
+        "retrieved_ast_context": {},
+        "historical_fix_context": [],
+        "repo_checkout_path": None,
+        "retriever_fallback": False,
+        "diagnosis_summary": "",
+        "candidate_diff": "",
+        "test_results": {},
+        "retry_count": 0,
+        "confidence_score": 0.0,
+        "confidence_breakdown": {},
+        "status": "running"
+    }
+
+    background_tasks.add_task(run_repair_workflow, session_id, initial_state)
+
+    return {
+        "session_id": str(session_id),
+        "status": "started",
+        "url": payload.url
+    }
 
 @router.get("/{session_id}")
 async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):

@@ -15,15 +15,19 @@ class DatasetLoader:
         
     def load_dataset(self, split: str = "test", limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
-        Loads the SWE-bench Lite dataset from Hugging Face.
-        Caches the metadata locally.
+        Loads the SWE-bench / curated benchmark dataset.
+        Checks for local curated benchmark set first, then cache, then Hugging Face.
         """
-        logger.info(f"Loading {self.dataset_name} ({split} split)...")
+        local_curated = Path(__file__).parent / "data" / "benchmark_set.json"
         cache_file = self.cache_dir / f"{split}_data.json"
-        
-        if cache_file.exists():
+
+        if local_curated.exists():
+            logger.info(f"Loading curated benchmark dataset from {local_curated}")
+            with open(local_curated, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        elif cache_file.exists():
             logger.info(f"Loading from local cache: {cache_file}")
-            with open(cache_file, "r") as f:
+            with open(cache_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
         else:
             logger.info("Fetching from Hugging Face...")

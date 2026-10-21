@@ -12,7 +12,9 @@ class Settings(BaseSettings):
     GITHUB_WEBHOOK_SECRET: str = ""
     GITHUB_TOKEN: str = ""
     PORT: int = 8000
-    
+    GIT_CLONE_TIMEOUT_SEC: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 settings = Settings()
+

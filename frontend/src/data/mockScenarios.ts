@@ -40,8 +40,10 @@ export const mockScenarios: Record<string, MockScenario> = {
       {
         iteration: 0,
         passed: false,
-        reason: 'Failed to await asynchronous context closure in finally block.',
-        diff: `@@ -412,8 +412,10 @@
+        reason: 'Failed to await async context closure — asyncio.create_task() does not propagate exceptions.',
+        diff: `--- a/src/flask/ctx.py
++++ b/src/flask/ctx.py
+@@ -412,8 +412,10 @@
          finally:
 -            if self.request is not None:
 -                self.request.close()
@@ -50,14 +52,17 @@ export const mockScenarios: Record<string, MockScenario> = {
         logs: [
           'Starting Pytest execution (Sandbox env)...',
           'collecting ... collected 28 items',
-          'test_async_ctx_teardown FAILED',
-          'AssertionError: Unhandled exception in background task'
+          'FAILED tests/test_async.py::test_async_ctx_teardown',
+          'AssertionError: Unhandled exception in background task',
+          '1 failed, 27 passed in 1.18s',
         ]
       },
       {
         iteration: 1,
         passed: true,
-        diff: `@@ -412,8 +412,10 @@
+        diff: `--- a/src/flask/ctx.py
++++ b/src/flask/ctx.py
+@@ -412,8 +412,13 @@
          finally:
 -            if self.request is not None:
 -                self.request.close()
@@ -69,12 +74,14 @@ export const mockScenarios: Record<string, MockScenario> = {
         logs: [
           'Starting Pytest execution (Sandbox env)...',
           'collecting ... collected 28 items',
-          'test_async_ctx_teardown PASSED',
-          '28 passed in 1.42s'
+          'PASSED tests/test_async.py::test_async_ctx_teardown',
+          '28 passed in 1.42s',
+          'Semgrep: 0 alerts.',
         ]
       }
     ]
   },
+
   'demo-requests': {
     id: 'demo-requests',
     title: 'requests/requests #4349',
@@ -93,23 +100,30 @@ export const mockScenarios: Record<string, MockScenario> = {
       {
         iteration: 0,
         passed: true,
-        diff: `@@ -102,4 +102,6 @@
-     def check_header_validity(header):
--        if header.startswith(' '):
--            raise InvalidHeader("Invalid return character")
-+        if re.search(r'\\r|\\n', header):
-+            raise InvalidHeader("Value for header contains invalid characters")
-+        if header.startswith(' '):
-+            raise InvalidHeader("Invalid return character")`,
+        diff: `--- a/requests/utils.py
++++ b/requests/utils.py
+@@ -102,6 +102,10 @@
+ def check_header_validity(header):
+     name, value = header
+-    if name.startswith(' '):
+-        raise InvalidHeader("Invalid return character or leading space")
++    if re.search(r'\\r|\\n', str(value)):
++        raise InvalidHeader(
++            f"Invalid header value {value!r}: contains CR or LF characters"
++        )
++    if name.startswith(' '):
++        raise InvalidHeader("Invalid return character or leading space")`,
         logs: [
           'Starting Pytest execution (Sandbox env)...',
           'collecting ... collected 14 items',
+          'PASSED tests/test_utils.py::test_header_validity',
           '14 passed in 0.84s',
-          'Semgrep static analysis: 0 alerts found.'
+          'Semgrep static analysis: 0 alerts found.',
         ]
       }
     ]
   },
+
   'demo-sympy': {
     id: 'demo-sympy',
     title: 'sympy/sympy #18059',
@@ -128,44 +142,55 @@ export const mockScenarios: Record<string, MockScenario> = {
       {
         iteration: 0,
         passed: false,
-        reason: 'RecursionError during expression evaluation',
-        diff: `@@ -23,3 +23,4 @@
+        reason: 'RecursionError during expression evaluation — infinite loop in eval().',
+        diff: `--- a/sympy/functions/elementary/complexes.py
++++ b/sympy/functions/elementary/complexes.py
+@@ -23,4 +23,6 @@
      def eval(cls, arg):
 +        if arg == S.ComplexInfinity:
 +            return S.NaN
          return -arg`,
         logs: [
-          'test_complex_infinity_sub FAILED',
-          'RecursionError: maximum recursion depth exceeded while calling a Python object'
+          'FAILED sympy/tests/test_complexes.py::test_complex_infinity_sub',
+          'RecursionError: maximum recursion depth exceeded',
         ]
       },
       {
         iteration: 1,
         passed: false,
-        reason: 'Failed to handle subtraction specifically.',
-        diff: `@@ -23,3 +23,4 @@
+        reason: 'Handles is_infinite but subtraction of ComplexInfinity - int still raises.',
+        diff: `--- a/sympy/functions/elementary/complexes.py
++++ b/sympy/functions/elementary/complexes.py
+@@ -23,4 +23,6 @@
      def eval(cls, arg):
 +        if getattr(arg, 'is_infinite', False):
 +            return arg
          return -arg`,
         logs: [
-          'test_complex_infinity_sub FAILED',
-          'TypeError: unsupported operand type(s) for -'
+          'FAILED sympy/tests/test_complexes.py::test_complex_infinity_sub',
+          "TypeError: unsupported operand type(s) for -: 'ComplexInfinity' and 'int'",
         ]
       },
       {
         iteration: 2,
         passed: true,
-        diff: `@@ -23,3 +23,5 @@
+        diff: `--- a/sympy/functions/elementary/complexes.py
++++ b/sympy/functions/elementary/complexes.py
+@@ -23,4 +23,9 @@
      def eval(cls, arg):
 +        if arg is S.ComplexInfinity:
 +            return S.NaN
-+        if arg.is_infinite:
-+            return arg
++        if getattr(arg, 'is_infinite', False) and arg.is_real:
++            return -arg
++        if getattr(arg, 'is_infinite', False):
++            return S.NaN
          return -arg`,
         logs: [
           'Starting Pytest execution (Sandbox env)...',
-          '45 passed in 4.12s'
+          'collecting ... collected 45 items',
+          'PASSED sympy/tests/test_complexes.py::test_complex_infinity_sub',
+          '45 passed in 4.12s',
+          'Semgrep: 0 alerts.',
         ]
       }
     ]

@@ -24,8 +24,10 @@ class ChromaManager:
         if not results['documents']:
             return []
         out = []
-        for doc, meta in zip(results['documents'][0], results['metadatas'][0]):
-            out.append({"document": doc, "metadata": meta})
+        distances = results.get('distances', [[]])[0] if results.get('distances') else []
+        for i, (doc, meta) in enumerate(zip(results['documents'][0], results['metadatas'][0])):
+            dist = distances[i] if i < len(distances) else None
+            out.append({"document": doc, "metadata": meta, "distance": dist})
         return out
 
 chroma_manager = ChromaManager()

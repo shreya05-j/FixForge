@@ -4,7 +4,7 @@ import { DemoPlaybackEngine } from '../utils/demoPlayback';
 
 export interface AgentNode {
   agent: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'unverified';
   latency?: number;
   output?: unknown;
 }
@@ -17,10 +17,12 @@ export interface FixForgeStreamState {
   retryIteration: number;
   retryMessage: string | null;
   isComplete: boolean;
+  isStreaming: boolean;  // true while fixer is streaming diff tokens
   confidenceScore: number | null;
   finalDiff: string | null;
   githubComment: string | null;
   error: string | null;
+  verdict?: 'passed' | 'failed' | 'unverified' | null;
   isDemo?: boolean;
 }
 
@@ -32,6 +34,7 @@ const initialState: FixForgeStreamState = {
   retryIteration: 0,
   retryMessage: null,
   isComplete: false,
+  isStreaming: false,
   confidenceScore: null,
   finalDiff: null,
   githubComment: null,
@@ -94,7 +97,7 @@ export function useFixForgeStream(sessionId: string) {
       const msgEvent = e as MessageEvent;
       const data = JSON.parse(msgEvent.data);
       if (data.chunk) {
-        setState(prev => ({ ...prev, chunks: prev.chunks + data.chunk }));
+        setState(prev => ({ ...prev, chunks: prev.chunks + data.chunk, isStreaming: true }));
       }
       if (data.log_line) {
         setState(prev => ({ ...prev, logs: [...prev.logs, data.log_line] }));
@@ -110,12 +113,13 @@ export function useFixForgeStream(sessionId: string) {
           ...prev.nodes,
           [data.agent]: {
             ...prev.nodes[data.agent],
-            status: data.status as 'completed' | 'failed',
+            status: data.status as 'completed' | 'failed' | 'unverified',
             latency: data.latency,
             output: data.output
           }
         },
-        chunks: '' 
+        chunks: '',
+        isStreaming: false,
       }));
     });
 
@@ -137,7 +141,8 @@ export function useFixForgeStream(sessionId: string) {
         isComplete: true,
         finalDiff: data.diff,
         confidenceScore: data.confidenceScore ?? data.confidence_score,
-        githubComment: data.githubComment ?? data.github_comment
+        githubComment: data.githubComment ?? data.github_comment,
+        verdict: data.verdict ?? (data.status === 'unverified' ? 'unverified' : (data.diff ? 'passed' : 'failed'))
       }));
       es.close();
     });

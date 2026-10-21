@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 from core.state import AgentState
 from graph.workflow import build_workflow
 from memory.ast_parser import extract_functions_and_classes
@@ -15,9 +15,10 @@ def standalone_func():
     result = extract_functions_and_classes(code)
     assert len(result["classes"]) == 1
     assert result["classes"][0]["name"] == "TargetClass"
-    assert len(result["functions"]) == 2 # standalone_func and method
+    assert len(result["functions"]) == 2  # standalone_func and method
 
-def test_langgraph_workflow_retry_loop():
+@pytest.mark.asyncio
+async def test_langgraph_workflow_retry_loop():
     workflow = build_workflow()
     initial_state: AgentState = {
         "repo_name": "/tmp/mock",
@@ -30,6 +31,8 @@ def test_langgraph_workflow_retry_loop():
         "plan": "",
         "retrieved_ast_context": {},
         "historical_fix_context": [],
+        "repo_checkout_path": None,
+        "retriever_fallback": False,
         "diagnosis_summary": "",
         "failure_category": "Logic Error",
         "severity": "Low",
@@ -38,8 +41,6 @@ def test_langgraph_workflow_retry_loop():
         "confidence_breakdown": {},
         "status": ""
     }
-    
-    # We will just run it and see if it completes
-    # Since verifier is mocked, it will either pass or fail based on the logic in run_verifier
-    final_state = workflow.invoke(initial_state)
+
+    final_state = await workflow.ainvoke(initial_state)
     assert final_state["status"] == "reporter_completed"

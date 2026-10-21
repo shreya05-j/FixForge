@@ -1,0 +1,4 @@
+INFO:     127.0.0.1:59171 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59171 - "GET /api/sessions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59171 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59171 - "POST /api/sessions/start HTTP/1.1" 422 Unprocessable Content

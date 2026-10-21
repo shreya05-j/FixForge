@@ -24,10 +24,14 @@ def build_workflow():
     workflow.add_edge("fixer", "verifier")
     
     def verification_router(state: AgentState):
-        test_passed = state.get("test_results", {}).get("passed", False)
+        test_results = state.get("test_results", {})
+        status = test_results.get("status")
+        test_passed = test_results.get("passed", False)
         retries = state.get("retry_count", 0)
         
-        if test_passed:
+        if status == "unverified":
+            return "reporter"
+        elif test_passed:
             return "confidence_engine"
         elif retries < settings.MAX_RETRIES:
             return "fixer"
@@ -39,7 +43,8 @@ def build_workflow():
         verification_router,
         {
             "confidence_engine": "confidence_engine",
-            "fixer": "fixer"
+            "fixer": "fixer",
+            "reporter": "reporter"
         }
     )
     

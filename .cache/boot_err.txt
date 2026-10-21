@@ -1,0 +1,3 @@
+INFO:     Will watch for changes in these directories: ['A:\\fixforge(2)\\FixForge\\fixforge']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [31368] using WatchFiles

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useFixForgeStream } from './hooks/useFixForgeStream';
 import { Toaster, toast } from 'sonner';
 import { mockScenarios } from './data/mockScenarios';
+import DiffViewer from './components/DiffViewer';
 import './index.css';
 
 const pipelineOrder = [
@@ -351,19 +352,55 @@ export default function App() {
                   <div className="border border-border-muted bg-surface-deep flex flex-col md:flex-row md:items-center justify-between p-6 relative overflow-hidden group animate-in fade-in slide-in-from-top-4 duration-500">
                     <div className="absolute inset-0 bg-gradient-to-r from-background to-transparent opacity-50 pointer-events-none"></div>
                     <div className="relative z-10 flex items-start md:items-center gap-4">
-                      <div className={`w-12 h-12 flex items-center justify-center border ${streamState.finalDiff ? 'border-primary bg-primary/10' : 'border-error bg-error/10'}`}>
-                        <span className={`material-symbols-outlined text-[28px] ${streamState.finalDiff ? 'text-primary' : 'text-error'}`} style={{fontVariationSettings: "'FILL' 1"}}>
-                          {streamState.finalDiff ? 'check_circle' : 'error'}
-                        </span>
-                      </div>
-                      <div>
-                        <div className={`font-headline-md text-headline-md font-bold ${streamState.finalDiff ? 'text-primary' : 'text-error'}`}>
-                          {streamState.finalDiff ? 'FIX VERIFIED • READY FOR APPROVAL' : 'FIX FAILED • MAX RETRIES REACHED'}
-                        </div>
-                        <div className="font-body-sm text-body-sm text-text-muted mt-1">
-                          {streamState.finalDiff ? 'All sandbox constraints satisfied. Patch ready to be merged.' : 'The agent was unable to find a valid patch within the retry limits.'}
-                        </div>
-                      </div>
+                      {streamState.verdict === 'unverified' ? (
+                        <>
+                          <div className="w-12 h-12 flex items-center justify-center border border-amber-500/50 bg-amber-500/10 text-amber-400">
+                            <span className="material-symbols-outlined text-[28px]" style={{fontVariationSettings: "'FILL' 1"}}>
+                              warning
+                            </span>
+                          </div>
+                          <div>
+                            <div className="font-headline-md text-headline-md font-bold text-amber-400">
+                              STATUS: UNVERIFIED • DOCKER SANDBOX UNAVAILABLE
+                            </div>
+                            <div className="font-body-sm text-body-sm text-text-muted mt-1">
+                              Verification was skipped because the Docker daemon is unreachable. Fix candidate generated but unverified.
+                            </div>
+                          </div>
+                        </>
+                      ) : streamState.verdict === 'passed' || (streamState.finalDiff && streamState.verdict !== 'failed') ? (
+                        <>
+                          <div className="w-12 h-12 flex items-center justify-center border border-primary bg-primary/10">
+                            <span className="material-symbols-outlined text-[28px] text-primary" style={{fontVariationSettings: "'FILL' 1"}}>
+                              check_circle
+                            </span>
+                          </div>
+                          <div>
+                            <div className="font-headline-md text-headline-md font-bold text-primary">
+                              FIX VERIFIED • READY FOR APPROVAL
+                            </div>
+                            <div className="font-body-sm text-body-sm text-text-muted mt-1">
+                              All sandbox constraints satisfied. Patch ready to be merged.
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-12 h-12 flex items-center justify-center border border-error bg-error/10">
+                            <span className="material-symbols-outlined text-[28px] text-error" style={{fontVariationSettings: "'FILL' 1"}}>
+                              error
+                            </span>
+                          </div>
+                          <div>
+                            <div className="font-headline-md text-headline-md font-bold text-error">
+                              FIX FAILED • VERIFICATION UNSUCCESSFUL
+                            </div>
+                            <div className="font-body-sm text-body-sm text-text-muted mt-1">
+                              The agent was unable to find a valid patch within the retry limits.
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                     <div className="relative z-10 flex items-center gap-6 mt-6 md:mt-0 font-code-sm text-code-sm border-t md:border-t-0 md:border-l border-border-muted pt-4 md:pt-0 md:pl-6">
                       <div>
@@ -391,19 +428,22 @@ export default function App() {
                         const isCompleted = node?.status === 'completed';
                         const isRunning = streamState.activeNode === agentName;
                         const isFailed = node?.status === 'failed';
+                        const isUnverified = node?.status === 'unverified';
                         
                         let bgClass = 'bg-surface-container border border-border-muted text-text-muted hover:border-primary cursor-pointer transition-colors';
                         if (isCompleted) bgClass = 'bg-primary text-background shadow-[0_0_10px_rgba(255,255,255,0.2)] cursor-pointer';
                         if (isRunning) bgClass = 'bg-primary border border-primary text-background animate-pulse cursor-pointer';
                         if (isFailed) bgClass = 'bg-error text-background cursor-pointer';
+                        if (isUnverified) bgClass = 'bg-amber-500 text-background cursor-pointer';
 
                         return (
                           <div key={agentName} className="flex flex-col items-center gap-2 min-w-[60px]" onClick={() => setActiveAgentNode(agentName)}>
                             <div className={`w-4 h-4 flex items-center justify-center ${bgClass}`} title={`Inspect ${agentName} telemetry`}>
                               {isCompleted ? <span className="material-symbols-outlined text-[12px] font-bold">check</span> :
-                              isFailed ? <span className="material-symbols-outlined text-[12px] font-bold">close</span> : null}
+                              isFailed ? <span className="material-symbols-outlined text-[12px] font-bold">close</span> :
+                              isUnverified ? <span className="material-symbols-outlined text-[12px] font-bold">warning</span> : null}
                             </div>
-                            <div className={`font-label-caps text-label-caps text-center whitespace-nowrap ${isCompleted || isRunning ? 'text-primary' : 'text-text-muted'}`}>
+                            <div className={`font-label-caps text-label-caps text-center whitespace-nowrap ${isCompleted || isRunning ? 'text-primary' : isUnverified ? 'text-amber-400' : 'text-text-muted'}`}>
                               0{idx + 1} {agentName.replace('_', ' ').toUpperCase()}
                             </div>
                           </div>
@@ -448,41 +488,14 @@ export default function App() {
                     {/* Tab Content */}
                     <div className="flex flex-col h-[550px]">
                       {activeTab === 'diff' && (
-                        <div className="flex-1 flex flex-col bg-[#0c0c0c]">
-                          <div className="bg-surface-container-lowest border-b border-border-muted px-4 py-2 flex justify-between items-center text-text-muted shrink-0">
-                            <div className="flex gap-2 items-center">
-                              <span>fixforge_solution.patch</span>
-                              <div className="ml-4 flex bg-surface-container border border-border-muted">
-                                <button 
-                                  onClick={() => setDiffViewMode('unified')} 
-                                  className={`px-2 py-0.5 text-xs ${diffViewMode === 'unified' ? 'bg-primary text-background' : 'hover:text-primary'}`}
-                                >Unified</button>
-                                <button 
-                                  onClick={() => setDiffViewMode('split')} 
-                                  className={`px-2 py-0.5 text-xs border-l border-border-muted ${diffViewMode === 'split' ? 'bg-primary text-background' : 'hover:text-primary'}`}
-                                >Split</button>
-                              </div>
-                            </div>
-                            <div className="flex gap-3">
-                              <button onClick={downloadPatch} title="Download .patch" className="hover:text-primary"><span className="material-symbols-outlined text-[14px]">download</span></button>
-                              <button onClick={copyDiff} title="Copy Diff" className="hover:text-primary"><span className="material-symbols-outlined text-[14px]">content_copy</span></button>
-                            </div>
-                          </div>
-                          <div className="p-4 overflow-y-auto whitespace-pre font-code-sm text-text-muted leading-[1.6] flex-1">
-                            {streamState.finalDiff ? (
-                              streamState.finalDiff.split('\n').map((line, i) => {
-                                if (line.startsWith('+')) return <span key={i} className="text-primary bg-primary/10 border-l-2 border-primary pl-2 block font-bold">{line}</span>;
-                                if (line.startsWith('-')) return <span key={i} className="text-error/80 bg-error/5 border-l-2 border-error/50 pl-2 block line-through">{line}</span>;
-                                return <span key={i} className="block pl-2">{line}</span>;
-                              })
-                            ) : (
-                              <div className="flex items-center justify-center h-full text-text-muted opacity-50 flex-col gap-2">
-                                <span className="material-symbols-outlined text-[48px] animate-spin">autorenew</span>
-                                <span>Awaiting Patch Generation...</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                        <DiffViewer
+                          diff={streamState.finalDiff ?? (streamState.chunks ? streamState.chunks : null)}
+                          isStreaming={streamState.isStreaming || (!!streamState.activeNode && streamState.activeNode === 'fixer' && !streamState.finalDiff)}
+                          viewMode={diffViewMode}
+                          onCopy={copyDiff}
+                          onDownload={downloadPatch}
+                          onViewModeChange={setDiffViewMode}
+                        />
                       )}
 
                       {activeTab === 'diagnosis' && (

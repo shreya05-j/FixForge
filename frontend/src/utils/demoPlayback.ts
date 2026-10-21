@@ -18,7 +18,7 @@ export class DemoPlaybackEngine {
   private timeouts: ReturnType<typeof setTimeout>[] = [];
 
   constructor(
-    scenario: MockScenario, 
+    scenario: MockScenario,
     onStateUpdate: (state: FixForgeStreamState | ((prev: FixForgeStreamState) => FixForgeStreamState)) => void
   ) {
     this.scenario = scenario;
@@ -30,7 +30,7 @@ export class DemoPlaybackEngine {
     this.isPlaying = true;
     this.clear();
 
-    // Initial state
+    // Reset to clean initial state
     this.onStateUpdate({
       nodes: {},
       activeNode: null,
@@ -39,34 +39,38 @@ export class DemoPlaybackEngine {
       retryIteration: 0,
       retryMessage: null,
       isComplete: false,
+      isStreaming: false,
       confidenceScore: null,
       finalDiff: null,
       githubComment: null,
-      error: null
+      error: null,
+      isDemo: true,
     });
 
-    let cumulativeDelay = 0;
-    
+    let cumulativeDelay = 500;
+
     // Simulate each attempt
     this.scenario.attempts.forEach((attempt, attemptIdx) => {
-      
-      // If it's a retry, add the retry loop event
+
+      // If it's a retry, show retry loop event first
       if (attemptIdx > 0) {
         this.schedule(() => {
           this.onStateUpdate(prev => ({
             ...prev,
             retryIteration: attemptIdx,
-            retryMessage: this.scenario.attempts[attemptIdx - 1].reason || 'Retry requested.',
+            retryMessage: this.scenario.attempts[attemptIdx - 1].reason ?? 'Retry requested by verifier.',
+            // Clear logs and nodes for new attempt
             logs: [],
             nodes: {},
             activeNode: null,
+            finalDiff: null,  // clear stale diff on retry
           }));
         }, cumulativeDelay);
-        cumulativeDelay += 1000;
+        cumulativeDelay += 1200;
       }
 
-      pipelineOrder.forEach((agent, _idx) => {
-        // Start node
+      pipelineOrder.forEach((agent) => {
+        // ── NODE START ────────────────────────────────────────────────────
         this.schedule(() => {
           this.onStateUpdate(prev => ({
             ...prev,
@@ -77,71 +81,103 @@ export class DemoPlaybackEngine {
             }
           }));
         }, cumulativeDelay);
-        
-        cumulativeDelay += 500; // Agent processing time
+        cumulativeDelay += 600;
 
-        // Simulate streaming tokens or logs
-        if (agent === 'verifier') {
-          attempt.logs.forEach((log, _logIdx) => {
+        // ── PER-AGENT PROGRESS EVENTS ─────────────────────────────────────
+        if (agent === 'fixer') {
+          // Stream the diff line by line (typewriter effect)
+          const diffLines = attempt.diff.split('\n');
+          diffLines.forEach((_, lineIdx) => {
+            this.schedule(() => {
+              this.onStateUpdate(prev => ({
+                ...prev,
+                // Build up the diff incrementally for streaming feel
+                chunks: attempt.diff.split('\n').slice(0, lineIdx + 1).join('\n'),
+              }));
+            }, cumulativeDelay + lineIdx * 60);
+          });
+          cumulativeDelay += diffLines.length * 60 + 300;
+
+        } else if (agent === 'verifier') {
+          // Stream each log line with a delay
+          attempt.logs.forEach((log, logIdx) => {
             this.schedule(() => {
               this.onStateUpdate(prev => ({
                 ...prev,
                 logs: [...prev.logs, log]
               }));
-            }, cumulativeDelay);
-            cumulativeDelay += 400;
+            }, cumulativeDelay + logIdx * 350);
           });
-        } else if (agent === 'fixer') {
-           this.schedule(() => {
-              this.onStateUpdate(prev => ({
-                ...prev,
-                finalDiff: attempt.diff
-              }));
-           }, cumulativeDelay);
-           cumulativeDelay += 500;
+          cumulativeDelay += attempt.logs.length * 350 + 300;
+
+        } else if (agent === 'confidence_engine') {
+          // Animate confidence score counting up
+          const target = this.scenario.confidence;
+          const steps = 12;
+          for (let s = 1; s <= steps; s++) {
+            const partial = parseFloat(((target / steps) * s).toFixed(2));
+            this.schedule(() => {
+              this.onStateUpdate(prev => ({ ...prev, confidenceScore: partial }));
+            }, cumulativeDelay + s * 80);
+          }
+          cumulativeDelay += steps * 80 + 200;
+
         } else {
-          cumulativeDelay += 600;
+          // Other agents: just a processing pause
+          cumulativeDelay += 700;
         }
 
-        // Complete node
+        // ── NODE COMPLETE ─────────────────────────────────────────────────
         const isFailed = agent === 'verifier' && !attempt.passed;
-        
         this.schedule(() => {
           this.onStateUpdate(prev => ({
             ...prev,
+            activeNode: isFailed ? null : prev.activeNode,
+            chunks: agent === 'fixer' ? '' : prev.chunks,  // clear streaming chunk
             nodes: {
               ...prev.nodes,
-              [agent]: { 
-                agent, 
+              [agent]: {
+                agent,
                 status: isFailed ? 'failed' : 'completed',
-                latency: Math.floor(Math.random() * 1000) + 200,
-                output: { message: `Completed ${agent} successfully.` }
+                latency: Math.floor(Math.random() * 900) + 200,
+                output: agent === 'fixer'
+                  ? { diff_lines: attempt.diff.split('\n').length }
+                  : agent === 'verifier'
+                  ? { passed: attempt.passed, tests_run: attempt.logs.length }
+                  : agent === 'confidence_engine'
+                  ? { score: this.scenario.confidence }
+                  : { message: `${agent} completed.` }
               }
             }
           }));
         }, cumulativeDelay);
+        cumulativeDelay += 200;
 
+        // If failed, stop this attempt's pipeline
         if (isFailed) {
-           // Break out of this pipeline run early because it failed
-           cumulativeDelay += 1000;
-           return; 
+          cumulativeDelay += 800;
+          return;
         }
       });
     });
 
-    // Final Completion Step
+    // ── PIPELINE COMPLETE ─────────────────────────────────────────────────────
     const lastAttempt = this.scenario.attempts[this.scenario.attempts.length - 1];
-    
+
     this.schedule(() => {
       this.onStateUpdate(prev => ({
         ...prev,
         isComplete: true,
         activeNode: null,
         confidenceScore: this.scenario.confidence,
-        finalDiff: lastAttempt.diff
+        finalDiff: lastAttempt.passed ? lastAttempt.diff : null,
+        githubComment: lastAttempt.passed
+          ? `FixForge AI verified this patch on \`${this.scenario.repo}\` with ${Math.round(this.scenario.confidence * 100)}% confidence.`
+          : null,
+        chunks: '',
       }));
       this.isPlaying = false;
-    }, cumulativeDelay + 1000);
+    }, cumulativeDelay + 600);
   }
 
   public stop() {
