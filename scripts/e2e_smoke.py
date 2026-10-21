@@ -29,10 +29,10 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from api.main import app
-from core.config import settings
-from db.session import AsyncSessionLocal, engine, Base
-from db.models import ReviewSession, AgentAttempt, DiagnosisRecord, ConfidenceMetric
+from api.main import app  # type: ignore
+from core.config import settings  # type: ignore
+from db.session import AsyncSessionLocal, engine, Base  # type: ignore
+from db.models import ReviewSession, AgentAttempt, DiagnosisRecord, ConfidenceMetric  # type: ignore
 
 
 async def run_single_smoke(run_index: int, target_url: str) -> dict:

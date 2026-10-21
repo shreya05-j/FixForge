@@ -27,7 +27,10 @@ describe('useFixForgeStream Hook', () => {
       onerror: ((err: any) => void) | null = null;
       close = vi.fn();
 
-      constructor(public url: string) {
+      url: string;
+
+      constructor(url: string) {
+        this.url = url;
         setTimeout(() => {
           if (this.onerror) {
             this.onerror(new Error('Connection refused'));
