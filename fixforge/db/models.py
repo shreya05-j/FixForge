@@ -12,6 +12,8 @@ class ReviewSession(Base):
     repo_url = Column(String, index=True)
     branch = Column(String, default="main")
     status = Column(String, default="pending")
+    llm_mode = Column(String, default="fallback")
+    docker_mode = Column(String, default="unavailable")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

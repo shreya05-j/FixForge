@@ -15,7 +15,7 @@ from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
-_FIXER_MODEL = "llama3-70b-8192"
+_FIXER_MODEL = getattr(settings, "FIXFORGE_MODEL", "qwen/qwen3.8-27b")
 _SYSTEM_PROMPT = (
     "You are a master software engineer. "
     "Output ONLY a valid git unified diff inside the candidate_diff field. "

@@ -105,12 +105,25 @@ async def _create_session_and_launch(
     session_id = uuid.uuid4()
     session_id_str = str(session_id)
 
+    # Probe active modes
+    active_llm = "live" if (settings.GROQ_API_KEY and len(settings.GROQ_API_KEY) > 10) else "fallback"
+    active_docker = "unavailable"
+    try:
+        import docker
+        d_client = docker.from_env()
+        d_client.ping()
+        active_docker = "live"
+    except Exception:
+        active_docker = "unavailable"
+
     try:
         new_session = ReviewSession(
             id=session_id,
             repo_url=repo_url,
             branch=branch,
             status="running",
+            llm_mode=active_llm,
+            docker_mode=active_docker,
         )
         db.add(new_session)
         await db.commit()

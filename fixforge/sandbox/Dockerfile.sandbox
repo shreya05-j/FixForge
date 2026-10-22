@@ -1,14 +1,20 @@
 FROM python:3.10-slim
 
-# Create a nonroot unprivileged user
-RUN useradd -m -s /bin/bash sandbox_user
+# Install git and system packages required for patching
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create nonroot unprivileged user (SRS Section 13)
+RUN useradd -u 1000 -m -s /bin/bash nonroot && \
+    useradd -u 1001 -m -s /bin/bash sandbox_user
 
 WORKDIR /app_scratch
 
 # Install foundational testing and AST dependencies
-RUN pip install --no-cache-dir pytest semgrep tree-sitter tree-sitter-python git
+RUN pip install --no-cache-dir pytest semgrep tree-sitter tree-sitter-python
 
-# Make sure sandbox_user owns the scratchpad
-RUN chown -R sandbox_user:sandbox_user /app_scratch
+# Make sure nonroot and sandbox_user own the scratchpad
+RUN chown -R nonroot:nonroot /app_scratch
 
-USER sandbox_user
+USER nonroot

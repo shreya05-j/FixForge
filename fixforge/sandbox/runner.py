@@ -133,13 +133,14 @@ echo "=== FIXFORGE_RUNNING_TESTS ==="
         return parse_sandbox_output(e.exit_status, stderr_text)
 
     except (docker.errors.DockerException, Exception) as e:
+        err_msg = f"Docker error: {e}"
         return {
             "status": "unverified",
             "passed": False,
             "exit_code": -1,
             "stdout": "",
-            "stderr": str(e),
-            "error": str(e)
+            "stderr": err_msg,
+            "error": err_msg
         }
 
     finally:

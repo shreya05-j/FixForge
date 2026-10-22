@@ -34,6 +34,31 @@ export default function App() {
   
   const [isHistoricalFixDrawerOpen, setIsHistoricalFixDrawerOpen] = useState(false);
 
+  interface HealthInfo {
+    overall_mode: 'LIVE' | 'PARTIAL' | 'FALLBACK';
+    llm_mode: 'live' | 'fallback';
+    docker_mode: 'live' | 'unavailable';
+    sandbox_image: 'present' | 'missing';
+    github_mode: 'dry_run' | 'live';
+    details?: {
+      llm?: { model?: string };
+    };
+  }
+  const [health, setHealth] = useState<HealthInfo | null>(null);
+
+  useEffect(() => {
+    fetch('http://localhost:8000/api/health')
+      .then(r => r.json())
+      .then(data => setHealth(data))
+      .catch(() => setHealth({
+        overall_mode: 'FALLBACK',
+        llm_mode: 'fallback',
+        docker_mode: 'unavailable',
+        sandbox_image: 'missing',
+        github_mode: 'dry_run'
+      }));
+  }, []);
+
   const streamState = useFixForgeStream(activeSession || '');
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -173,14 +198,36 @@ export default function App() {
           <div className="font-headline-md text-headline-md font-bold text-primary dark:text-primary tracking-tight">
             FixForge AI
           </div>
-          {streamState.isDemo && (
+          {/* System Mode Badge */}
+          {streamState.isDemo ? (
             <span
-              id="simulated-badge"
+              id="mode-badge"
               className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/50 tracking-widest uppercase"
               title="This session is running in offline simulated demo mode"
             >
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
               SIMULATED
+            </span>
+          ) : health ? (
+            <span
+              id="mode-badge"
+              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-black tracking-widest uppercase border ${
+                health.overall_mode === 'LIVE'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                  : health.overall_mode === 'PARTIAL'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                  : 'bg-rose-500/20 text-rose-300 border-rose-500/50'
+              }`}
+              title={`LLM: ${health.llm_mode} | Docker: ${health.docker_mode} | Sandbox Image: ${health.sandbox_image}`}
+            >
+              <span className={`w-2 h-2 rounded-full ${
+                health.overall_mode === 'LIVE' ? 'bg-emerald-400' : health.overall_mode === 'PARTIAL' ? 'bg-amber-400' : 'bg-rose-400'
+              }`}></span>
+              {health.overall_mode}
+            </span>
+          ) : (
+            <span id="mode-badge" className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-black tracking-widest uppercase border bg-surface-container text-text-muted border-border-muted">
+              CHECKING...
             </span>
           )}
           
@@ -344,6 +391,14 @@ export default function App() {
                   </span>
                   <span>•</span>
                   <span>{streamState.isDemo ? 'Triggered via Simulated Playback' : 'Triggered via Webhook'}</span>
+                  {health && (
+                    <>
+                      <span>•</span>
+                      <span className="text-xs uppercase font-mono text-text-muted">
+                        LLM: <b className={health.llm_mode === 'live' ? 'text-emerald-400' : 'text-amber-400'}>{health.llm_mode}</b> | DOCKER: <b className={health.docker_mode === 'live' ? 'text-emerald-400' : 'text-rose-400'}>{health.docker_mode}</b>
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
             </div>

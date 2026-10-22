@@ -483,6 +483,8 @@ async def list_sessions(db: AsyncSession = Depends(get_db)):
         "status": s.status,
         "repository": s.repo_url,
         "branch": s.branch,
+        "llm_mode": getattr(s, "llm_mode", "fallback"),
+        "docker_mode": getattr(s, "docker_mode", "unavailable"),
         "failure_classification": s.diagnosis.failure_classification if s.diagnosis else "Unclassified",
         "confidence_score": s.metrics.overall_score if s.metrics else 0.0,
         "created_at": s.created_at
@@ -510,12 +512,24 @@ async def start_session(
 
     session_id = uuid.uuid4()
     
+    active_llm = "live" if (settings.GROQ_API_KEY and len(settings.GROQ_API_KEY) > 10) else "fallback"
+    active_docker = "unavailable"
+    try:
+        import docker
+        d_client = docker.from_env()
+        d_client.ping()
+        active_docker = "live"
+    except Exception:
+        active_docker = "unavailable"
+
     try:
         new_session = ReviewSession(
             id=session_id,
             repo_url=payload.url,
             branch="main",
-            status="running"
+            status="running",
+            llm_mode=active_llm,
+            docker_mode=active_docker
         )
         db.add(new_session)
         await db.commit()
@@ -580,6 +594,8 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
         "status": session.status,
         "repository": session.repo_url,
         "branch": session.branch,
+        "llm_mode": getattr(session, "llm_mode", "fallback"),
+        "docker_mode": getattr(session, "docker_mode", "unavailable"),
         "diagnosis": {
             "failure_classification": session.diagnosis.failure_classification,
             "severity_rating": session.diagnosis.severity_rating,

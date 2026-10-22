@@ -1,5 +1,6 @@
 from core.state import AgentState
 from core.llm import async_llm_client
+from core.config import settings
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any
 
@@ -9,14 +10,15 @@ class PlannerOutput(BaseModel):
 
 async def run_planner(state: AgentState) -> Dict[str, Any]:
     """
-    ForgePlanner: Evaluates issue to generate prioritized target files and search directives using Llama 3.3.
+    ForgePlanner: Evaluates issue to generate prioritized target files and search directives.
     """
     print(f"Planning fix for issue {state.get('issue_id')}")
     prompt = f"Issue Title: {state.get('issue_title')}\nIssue Body: {state.get('issue_body')}\nTrace: {state.get('stack_trace')}"
     
+    model_name = getattr(settings, "FIXFORGE_MODEL", "qwen/qwen3.8-27b")
     try:
         response = await async_llm_client.chat.completions.create(
-            model="llama3-70b-8192", # Using supported Groq model identifier
+            model=model_name,
             response_model=PlannerOutput,
             temperature=0.0, # Deterministic planning
             messages=[

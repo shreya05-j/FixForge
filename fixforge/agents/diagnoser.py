@@ -1,5 +1,6 @@
 from core.state import AgentState
 from core.llm import async_llm_client
+from core.config import settings
 from pydantic import BaseModel, Field
 from typing import Literal, Dict, Any
 
@@ -10,12 +11,13 @@ class DiagnoserOutput(BaseModel):
 
 async def run_diagnoser(state: AgentState) -> Dict[str, Any]:
     """
-    ForgeDiagnoser: Identifies root cause and predicts severity using Llama 3.3 structured outputs.
+    ForgeDiagnoser: Identifies root cause and predicts severity using structured outputs.
     """
     prompt = f"Context: {state.get('retrieved_ast_context')}\nIssue: {state.get('issue_body')}"
+    model_name = getattr(settings, "FIXFORGE_MODEL", "qwen/qwen3.8-27b")
     try:
         response = await async_llm_client.chat.completions.create(
-            model="llama3-70b-8192",
+            model=model_name,
             response_model=DiagnoserOutput,
             temperature=0.0,
             messages=[

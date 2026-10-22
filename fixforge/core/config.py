@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     WORKFLOW_TIMEOUT_SEC: int = 300
     # Stage 7: LLM consistency check — number of low-temp samples for the Fixer.
     LLM_CONSISTENCY_SAMPLES: int = 2
+    FIXFORGE_MODEL: str = "llama-3.3-70b-versatile"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()

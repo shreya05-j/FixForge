@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import webhooks, sessions, streams
+from api.routes import webhooks, sessions, streams, health
 from db.session import init_db
 
 app = FastAPI(title="FixForge API", version="1.0.0")
@@ -17,10 +17,11 @@ app.add_middleware(
 async def on_startup():
     await init_db()
 
+app.include_router(health.router, prefix="/api", tags=["Health"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["Sessions"])
 app.include_router(streams.router, prefix="/api/sessions", tags=["Streams"])
 
 @app.get("/")
 def health_check():
-    return {"status": "healthy", "service": "FixForge Orchestrator"}
+    return health.get_system_health()
