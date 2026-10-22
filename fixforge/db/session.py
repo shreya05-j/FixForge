@@ -33,6 +33,31 @@ def _migrate_schema(sync_conn):
                 sync_conn.execute(text("ALTER TABLE review_sessions ADD COLUMN llm_mode VARCHAR(20) DEFAULT 'fallback'"))
             if "docker_mode" not in col_names:
                 sync_conn.execute(text("ALTER TABLE review_sessions ADD COLUMN docker_mode VARCHAR(20) DEFAULT 'unavailable'"))
+        # agent_attempts
+        res_a = sync_conn.execute(text("PRAGMA table_info(agent_attempts)")).fetchall()
+        cols_a = [r[1] for r in res_a]
+        if cols_a:
+            for col, ddl in [
+                ("source", "ALTER TABLE agent_attempts ADD COLUMN source VARCHAR(20) DEFAULT 'llm'"),
+                ("model_name", "ALTER TABLE agent_attempts ADD COLUMN model_name VARCHAR(100)"),
+                ("tokens_used", "ALTER TABLE agent_attempts ADD COLUMN tokens_used INTEGER DEFAULT 0"),
+                ("latency_sec", "ALTER TABLE agent_attempts ADD COLUMN latency_sec FLOAT DEFAULT 0.0"),
+            ]:
+                if col not in cols_a:
+                    sync_conn.execute(text(ddl))
+
+        # diagnosis_records
+        res_d = sync_conn.execute(text("PRAGMA table_info(diagnosis_records)")).fetchall()
+        cols_d = [r[1] for r in res_d]
+        if cols_d:
+            for col, ddl in [
+                ("source", "ALTER TABLE diagnosis_records ADD COLUMN source VARCHAR(20) DEFAULT 'llm'"),
+                ("model_name", "ALTER TABLE diagnosis_records ADD COLUMN model_name VARCHAR(100)"),
+                ("tokens_used", "ALTER TABLE diagnosis_records ADD COLUMN tokens_used INTEGER DEFAULT 0"),
+                ("latency_sec", "ALTER TABLE diagnosis_records ADD COLUMN latency_sec FLOAT DEFAULT 0.0"),
+            ]:
+                if col not in cols_d:
+                    sync_conn.execute(text(ddl))
     except Exception:
         pass
 

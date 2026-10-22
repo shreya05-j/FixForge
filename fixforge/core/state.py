@@ -27,3 +27,7 @@ class AgentState(TypedDict):
     status: str
     attempt_history: Optional[List[Dict[str, Any]]]
     consistency_samples: Optional[List[str]]
+    planner_telemetry: Optional[Dict[str, Any]]
+    diagnoser_telemetry: Optional[Dict[str, Any]]
+    fixer_telemetry: Optional[Dict[str, Any]]
+    consistency_telemetry: Optional[List[Dict[str, Any]]]

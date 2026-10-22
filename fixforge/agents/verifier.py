@@ -13,9 +13,14 @@ async def run_verifier(state: AgentState) -> Dict[str, Any]:
     
     current_retry = state.get('retry_count', 0)
     attempts = list(state.get('attempt_history') or [])
+    fixer_telem = state.get('fixer_telemetry') or {}
     attempts.append({
         "attempt_number": current_retry + 1,
         "status": results.get("status", "failed"),
+        "source": fixer_telem.get("source", "llm"),
+        "model_name": fixer_telem.get("model", "qwen/qwen3.8-27b"),
+        "tokens_used": fixer_telem.get("total_tokens", 0),
+        "latency_sec": fixer_telem.get("latency_sec", 0.0),
         "patch_diff": candidate_diff,
         "test_logs": results.get("stdout") or results.get("stderr") or results.get("error", "")
     })

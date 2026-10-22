@@ -344,12 +344,33 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                 for old_att in list(sess.attempts):
                     await session_db.delete(old_att)
 
+                # 0. Check LLM telemetry across agents to set session llm_mode honestly
+                diag_telemetry = merged_state.get("diagnoser_telemetry") or {}
+                fixer_telemetry = merged_state.get("fixer_telemetry") or {}
+                planner_telemetry = merged_state.get("planner_telemetry") or {}
+
+                sources = [
+                    diag_telemetry.get("source", "fallback"),
+                    fixer_telemetry.get("source", "fallback"),
+                    planner_telemetry.get("source", "fallback"),
+                ]
+                if all(s == "llm" for s in sources):
+                    sess.llm_mode = "live"
+                elif any(s == "llm" for s in sources):
+                    sess.llm_mode = "partial"
+                else:
+                    sess.llm_mode = "fallback"
+
                 # 1. Persist AgentAttempt rows
                 attempts_data = list(merged_state.get('attempt_history') or [])
                 if not attempts_data:
                     attempts_data = [{
                         "attempt_number": 1,
                         "status": v_status,
+                        "source": fixer_telemetry.get("source", "llm"),
+                        "model_name": fixer_telemetry.get("model", "qwen/qwen3.8-27b"),
+                        "tokens_used": fixer_telemetry.get("total_tokens", 0),
+                        "latency_sec": fixer_telemetry.get("latency_sec", 0.0),
                         "patch_diff": final_diff,
                         "test_logs": (v_results.get("stdout") or v_results.get("stderr") or v_results.get("error") or "Verification completed.")
                     }]
@@ -360,6 +381,10 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                         session_id=session_uuid,
                         attempt_number=att.get("attempt_number", 1),
                         status=att.get("status", "completed"),
+                        source=att.get("source", fixer_telemetry.get("source", "llm")),
+                        model_name=att.get("model_name", fixer_telemetry.get("model", "qwen/qwen3.8-27b")),
+                        tokens_used=att.get("tokens_used", fixer_telemetry.get("total_tokens", 0)),
+                        latency_sec=att.get("latency_sec", fixer_telemetry.get("latency_sec", 0.0)),
                         patch_diff=att.get("patch_diff", final_diff),
                         test_logs=att.get("test_logs", "")
                     )
@@ -371,6 +396,10 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                     session_id=session_uuid,
                     failure_classification=merged_state.get("failure_category", "Logic Error"),
                     severity_rating=merged_state.get("severity", "Medium"),
+                    source=diag_telemetry.get("source", "llm"),
+                    model_name=diag_telemetry.get("model", "qwen/qwen3.8-27b"),
+                    tokens_used=diag_telemetry.get("total_tokens", 0),
+                    latency_sec=diag_telemetry.get("latency_sec", 0.0),
                     ast_context=merged_state.get("retrieved_ast_context") or {},
                     diff_trees={
                         "root_cause": merged_state.get("diagnosis_summary", "Fault identified in target files"),
@@ -393,7 +422,7 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                 session_db.add(metrics_row)
 
                 await session_db.commit()
-                logger.info(f"Session {session_id_str} and all child records persisted in DB (status={session_db_status})")
+                logger.info(f"Session {session_id_str} and all child records persisted in DB (status={session_db_status}, llm_mode={sess.llm_mode})")
 
     except Exception as exc:
         logger.exception(f"Background workflow failed for session {session_id_str}: {exc}")
@@ -599,6 +628,10 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
         "diagnosis": {
             "failure_classification": session.diagnosis.failure_classification,
             "severity_rating": session.diagnosis.severity_rating,
+            "source": getattr(session.diagnosis, "source", "llm"),
+            "model_name": getattr(session.diagnosis, "model_name", None),
+            "tokens_used": getattr(session.diagnosis, "tokens_used", 0),
+            "latency_sec": getattr(session.diagnosis, "latency_sec", 0.0),
             "ast_context": session.diagnosis.ast_context,
             "diff_trees": session.diagnosis.diff_trees,
         } if session.diagnosis else None,
@@ -613,6 +646,10 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
                 "id": str(attempt.id),
                 "attempt_number": attempt.attempt_number,
                 "status": attempt.status,
+                "source": getattr(attempt, "source", "llm"),
+                "model_name": getattr(attempt, "model_name", None),
+                "tokens_used": getattr(attempt, "tokens_used", 0),
+                "latency_sec": getattr(attempt, "latency_sec", 0.0),
                 "patch_diff": attempt.patch_diff,
                 "test_logs": attempt.test_logs,
                 "created_at": attempt.created_at

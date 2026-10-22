@@ -1,8 +1,13 @@
+import logging
 from core.state import AgentState
-from core.llm import async_llm_client
-from core.config import settings
+from core.llm import get_async_client
+from core.llm_caller import call_structured_llm
+
+async_llm_client = get_async_client()
 from pydantic import BaseModel, Field
 from typing import Literal, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 class DiagnoserOutput(BaseModel):
     diagnosis_summary: str = Field(description="Detailed root cause summary and explanation.")
@@ -14,30 +19,32 @@ async def run_diagnoser(state: AgentState) -> Dict[str, Any]:
     ForgeDiagnoser: Identifies root cause and predicts severity using structured outputs.
     """
     prompt = f"Context: {state.get('retrieved_ast_context')}\nIssue: {state.get('issue_body')}"
-    model_name = getattr(settings, "FIXFORGE_MODEL", "qwen/qwen3.8-27b")
-    try:
-        response = await async_llm_client.chat.completions.create(
-            model=model_name,
-            response_model=DiagnoserOutput,
-            temperature=0.0,
-            messages=[
-                {"role": "system", "content": "You are a Software Diagnoser. Determine the root cause, failure category, and severity from the provided context."},
-                {"role": "user", "content": prompt}
-            ],
-            max_retries=3
-        )
+    messages = [
+        {"role": "system", "content": "You are a Software Diagnoser. Determine the root cause, failure category, and severity from the provided context."},
+        {"role": "user", "content": prompt}
+    ]
+
+    response, telemetry = await call_structured_llm(
+        agent_name="Diagnoser",
+        response_model=DiagnoserOutput,
+        messages=messages,
+        temperature=0.0,
+        client=async_llm_client
+    )
+
+    if response:
         ds = response.diagnosis_summary
         fc = response.failure_category
         sev = response.severity
-    except Exception as e:
-        print(f"Error in Diagnoser LLM: {e}")
+    else:
         ds = "Fallback diagnosis: Undetermined error due to LLM failure."
         fc = "Runtime Error"
         sev = "Medium"
-        
+
     return {
         'diagnosis_summary': ds,
         'failure_category': fc,
         'severity': sev,
+        'diagnoser_telemetry': telemetry,
         'status': 'diagnoser_completed'
     }

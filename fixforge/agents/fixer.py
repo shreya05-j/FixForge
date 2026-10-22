@@ -8,10 +8,13 @@ in state["consistency_samples"] for the Confidence Engine's LLM consistency sign
 
 import logging
 from core.state import AgentState
-from core.llm import async_llm_client
+from core.llm import get_async_client
+from core.llm_caller import call_structured_llm
 from core.config import settings
 from pydantic import BaseModel, Field
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
+
+async_llm_client = get_async_client()
 
 logger = logging.getLogger(__name__)
 
@@ -54,23 +57,22 @@ def _build_fixer_prompt(state: AgentState) -> str:
     )
 
 
-async def _call_fixer(prompt: str, temperature: float) -> str:
-    """Single LLM call to the Fixer; returns the diff string or '' on failure."""
-    try:
-        response = await async_llm_client.chat.completions.create(
-            model=_FIXER_MODEL,
-            response_model=FixerOutput,
-            temperature=temperature,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            max_retries=3,
-        )
-        return response.candidate_diff
-    except Exception as exc:
-        logger.warning("Fixer LLM call failed (temp=%.2f): %s", temperature, exc)
-        return ""
+async def _call_fixer_structured(prompt: str, temperature: float, agent_name: str = "Fixer") -> Tuple[str, Dict[str, Any]]:
+    """Single LLM call to the Fixer; returns (diff_string, telemetry)."""
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
+    resp, telemetry = await call_structured_llm(
+        agent_name=agent_name,
+        response_model=FixerOutput,
+        messages=messages,
+        temperature=temperature,
+        timeout_sec=45.0,
+        client=async_llm_client,
+    )
+    diff = resp.candidate_diff if resp else ""
+    return diff, telemetry
 
 
 async def run_fixer(state: AgentState) -> Dict[str, Any]:
@@ -86,7 +88,7 @@ async def run_fixer(state: AgentState) -> Dict[str, Any]:
 
     # Primary diff generation
     primary_temp = 0.0 if retry_count == 0 else 0.2
-    diff = await _call_fixer(prompt, primary_temp)
+    diff, primary_telemetry = await _call_fixer_structured(prompt, primary_temp, "Fixer")
 
     if not diff:
         logger.error("Fixer produced empty diff after LLM call.")
@@ -94,9 +96,16 @@ async def run_fixer(state: AgentState) -> Dict[str, Any]:
     # Consistency samples (low temperature, separate calls)
     n_samples = settings.LLM_CONSISTENCY_SAMPLES
     consistency_samples: List[str] = []
+    consistency_telemetry: List[Dict[str, Any]] = []
+
     if diff and n_samples > 0:
         for i in range(n_samples):
-            sample = await _call_fixer(prompt, temperature=0.15)
+            sample, sample_telemetry = await _call_fixer_structured(
+                prompt,
+                temperature=0.15,
+                agent_name=f"Fixer-ConsistencySampler-{i+1}"
+            )
+            consistency_telemetry.append(sample_telemetry)
             if sample:
                 consistency_samples.append(sample)
                 logger.debug("Consistency sample %d/%d generated (%d chars).", i + 1, n_samples, len(sample))
@@ -109,5 +118,7 @@ async def run_fixer(state: AgentState) -> Dict[str, Any]:
     return {
         "candidate_diff": diff,
         "consistency_samples": consistency_samples,
+        "fixer_telemetry": primary_telemetry,
+        "consistency_telemetry": consistency_telemetry,
         "status": "fixer_completed",
     }
