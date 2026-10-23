@@ -9,12 +9,12 @@ FixForge AI is an explainable, self-verifying automated program repair system. I
 | Area | Status | Verification Evidence |
 |---|---|---|
 | **One-Command Runner** | ✅ Operational | `.\run_all.ps1` boots backend (:8000) & frontend (:5173) with environment checks. |
-| **Backend API** | ✅ Operational | FastAPI boots cleanly; all endpoints (`/`, `/api/sessions`, `/api/sessions/start`, `/api/webhooks/github`, `/api/sessions/{id}/stream`) live. |
-| **Test Suite** | ✅ 28/28 Passing | `python -m pytest` executes 28 unit and gate tests cleanly in 25–28s. |
-| **E2E Acceptance Smoke** | ✅ 100% (10/10) | `python scripts/e2e_smoke.py --runs 10` confirms 10 consecutive full pipeline runs persist DB rows and compute confidence. |
-| **Evaluation Benchmark** | ✅ Operational | Evaluated 20 SWE-bench style instances (60 runs total): FixForge achieved **83.33% resolution** vs 15.00% single-shot LLM baseline (+68.33% delta). |
-| **Frontend Dashboard** | ✅ Operational | React 19 + TypeScript + Vite builds in 508ms; offline mode shows explicit `[SIMULATED]` safety badge. |
-| **Docker Sandbox** | ✅ Resilient | Executes in isolated containers when Docker is running; gracefully falls back to `unverified` status when Docker is down. |
+| **Backend API** | ✅ Operational | FastAPI boots cleanly; all endpoints (`/`, `/api/health`, `/api/sessions`, `/api/sessions/start`, `/api/webhooks/github`, `/api/sessions/{id}/stream`) live. |
+| **Test Suite** | ✅ 32/32 Passing | `.venv\Scripts\pytest fixforge/tests -q` executes 32 unit, security, and gate tests cleanly. |
+| **E2E Acceptance Smoke** | ✅ 10/10 Verified Live | `python scripts/e2e_smoke.py --runs 10` confirms 10 full pipeline runs in `live/live` mode with DB persistence and confidence scoring. |
+| **Evaluation Benchmark** | ✅ Honest Accounting | 100 live runs across 20 curated instances. Evaluates single-shot, static analysis, and multi-agent pipeline with strict resolution rules (see `RESULTS.md`). |
+| **Frontend Dashboard** | ✅ Operational | React 19 + TypeScript + Vite builds in 237ms; Vitest 7/7 passing; Stitch design tokens active with LIVE/PARTIAL/FALLBACK/SIMULATED badges. |
+| **Docker Sandbox** | ✅ Resilient | Executes in isolated containers (`fixforge-sandbox:latest`) with non-root, read-only repo, and disabled network. |
 
 ---
 
