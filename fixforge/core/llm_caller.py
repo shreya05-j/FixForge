@@ -28,7 +28,60 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
+import re
+import json as _json
 import unittest.mock
+
+
+def _extract_diff_from_failed_generation(exc_str: str, response_model: type) -> Optional[Any]:
+    """
+    When Groq returns json_validate_failed, the error body contains
+    `failed_generation` with the truncated JSON the model produced.
+    If we can extract a valid-enough diff from it, return a partial model
+    rather than falling back to heuristics.
+    """
+    # Find the failed_generation value inside the error string
+    fg_match = re.search(r"'failed_generation':\s*'(.*?)(?:'\s*\}\s*\}|$)", exc_str, re.DOTALL)
+    if not fg_match:
+        # Try double-quote variant
+        fg_match = re.search(r'"failed_generation":\s*"(.*?)(?:"\s*\}\s*\}|$)', exc_str, re.DOTALL)
+    if not fg_match:
+        return None
+
+    fg_raw = fg_match.group(1)
+    # Unescape common JSON escapes
+    fg_raw = fg_raw.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\')
+
+    # Try to parse as JSON first
+    try:
+        parsed = _json.loads(fg_raw + '}')
+        field_val = None
+        for v in parsed.values():
+            if isinstance(v, str) and v.strip().startswith('---'):
+                field_val = v
+                break
+        if field_val:
+            return response_model.model_validate({'candidate_diff': field_val})
+    except Exception:
+        pass
+
+    # Try to extract candidate_diff value directly
+    diff_match = re.search(r'"candidate_diff":\s*"(.*)', fg_raw, re.DOTALL)
+    if diff_match:
+        raw_diff = diff_match.group(1)
+        # Unescape again since it may be double-escaped in the error string
+        raw_diff = raw_diff.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\')
+        # Truncate at unclosed JSON (look for diff start)
+        if raw_diff.strip().startswith('---'):
+            # Trim trailing garbage (unclosed quotes etc.)
+            raw_diff = raw_diff.rstrip('"\\').rstrip()
+            try:
+                return response_model.model_validate({'candidate_diff': raw_diff})
+            except Exception:
+                pass
+
+    return None
+
 
 async def call_structured_llm(
     agent_name: str,
@@ -38,6 +91,7 @@ async def call_structured_llm(
     max_retries: int = 3,
     timeout_sec: float = 30.0,
     client: Optional[Any] = None,
+    max_tokens: int = 1500,
 ) -> Tuple[Optional[T], Dict[str, Any]]:
     """
     Standardized live LLM invocation wrapper.
@@ -95,6 +149,7 @@ async def call_structured_llm(
                     response_model=response_model,
                     temperature=temperature,
                     messages=messages,
+                    max_tokens=max_tokens,
                 ),
                 timeout=timeout_sec,
             )
@@ -135,11 +190,46 @@ async def call_structured_llm(
 
         except Exception as exc:
             latency = round(time.time() - t0, 3)
+            exc_str = str(exc)
+            # OTPM / token-budget 429 — treat same as RateLimitError, back off
+            if "rate_limit_exceeded" in exc_str or "Request too large" in exc_str:
+                logger.warning(
+                    "[%s] OTPM/token-budget 429 (attempt %d/%d): backing off %.1fs...",
+                    agent_name, attempt + 1, max_retries, backoff
+                )
+                await asyncio.sleep(backoff)
+                backoff *= 2.0
+                continue
+            # Special handling for json_validate_failed (model hit token limit mid-JSON)
+            if "json_validate_failed" in exc_str:
+                recovered = _extract_diff_from_failed_generation(exc_str, response_model)
+                if recovered is not None:
+                    logger.info(
+                        "[%s] Recovered partial diff from failed_generation (attempt %d/%d, %.3fs)",
+                        agent_name, attempt + 1, max_retries, latency
+                    )
+                    telemetry = {
+                        "source": "llm",
+                        "model": model_name,
+                        "latency_sec": latency,
+                        "prompt_tokens": 0,
+                        "completion_tokens": 0,
+                        "total_tokens": 0,
+                    }
+                    return recovered, telemetry
+                else:
+                    # Cannot recover — the model hallucinated a huge rewrite.
+                    # Do NOT retry with same prompt (will produce same result).
+                    logger.warning(
+                        "[%s] json_validate_failed and no recoverable diff (attempt %d/%d, %.3fs) — skipping remaining retries.",
+                        agent_name, attempt + 1, max_retries, latency
+                    )
+                    break
             logger.warning(
                 "[%s] LLM error (attempt %d/%d) after %.3fs: %s: %s",
-                agent_name, attempt + 1, max_retries, latency, type(exc).__name__, exc
+                agent_name, attempt + 1, max_retries, latency, type(exc).__name__, exc_str[:200]
             )
-            if "429" in str(exc):
+            if "429" in exc_str and "rate_limit_exceeded" not in exc_str:
                 await asyncio.sleep(backoff)
                 backoff *= 2.0
 

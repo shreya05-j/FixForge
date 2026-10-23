@@ -23,24 +23,28 @@ from agents.diagnoser import DiagnoserOutput
 from agents.fixer import FixerOutput
 
 
+import docker
+
+
 def test_gate_case_c_docker_stopped_returns_unverified():
     """
     Gate Case (c): When Docker daemon is unavailable, run_in_sandbox must return
     status='unverified', passed=False, exit_code=-1, and an explicit error message.
     It must NEVER return passed=True.
     """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        result = run_in_sandbox(tmpdir, "diff --git a/x b/x\n", test_cmd="pytest")
-        print("\n[Stage 2 Gate Case C] Docker stopped output:")
-        print(f"  status:    {result['status']}")
-        print(f"  passed:    {result['passed']}")
-        print(f"  exit_code: {result['exit_code']}")
-        print(f"  error:     {result['error'][:80]}...")
+    with patch("sandbox.runner.docker.from_env", side_effect=docker.errors.DockerException("Docker daemon unavailable: connection refused")):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = run_in_sandbox(tmpdir, "diff --git a/x b/x\n", test_cmd="pytest")
+            print("\n[Stage 2 Gate Case C] Docker stopped output:")
+            print(f"  status:    {result['status']}")
+            print(f"  passed:    {result['passed']}")
+            print(f"  exit_code: {result['exit_code']}")
+            print(f"  error:     {result['error'][:80]}...")
 
-        assert result["status"] == "unverified", f"Expected 'unverified', got {result['status']}"
-        assert result["passed"] is False, "Must NEVER return passed=True when Docker is down"
-        assert result["exit_code"] == -1
-        assert "Docker daemon unavailable" in result["error"] or "Docker" in result["error"]
+            assert result["status"] == "unverified", f"Expected 'unverified', got {result['status']}"
+            assert result["passed"] is False, "Must NEVER return passed=True when Docker is down"
+            assert result["exit_code"] == -1
+            assert "Docker daemon unavailable" in result["error"] or "Docker" in result["error"]
 
 
 def test_gate_case_b_malformed_patch_returns_patch_failed():

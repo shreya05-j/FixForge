@@ -20,15 +20,25 @@ logger = logging.getLogger(__name__)
 
 _FIXER_MODEL = getattr(settings, "FIXFORGE_MODEL", "qwen/qwen3.8-27b")
 _SYSTEM_PROMPT = (
-    "You are a master software engineer. "
-    "Output ONLY a valid git unified diff inside the candidate_diff field. "
-    "The diff must start with '--- a/' and '+++ b/' headers and include correct @@ hunk headers."
+    "You are a precise software engineer producing MINIMAL bug fixes.\n"
+    "Rules:\n"
+    "1. Output ONLY a valid git unified diff in the candidate_diff field.\n"
+    "2. The diff MUST start with '--- a/<filepath>' and '+++ b/<filepath>'.\n"
+    "3. MINIMAL CHANGE ONLY: change the fewest lines possible to fix the bug. "
+    "Do NOT refactor, add features, or rewrite unrelated code.\n"
+    "4. Maximum 25 lines changed across all hunks. If you need more, you have misunderstood the bug.\n"
+    "5. Each @@ hunk header must be correct and match real line numbers.\n"
+    "6. Never output explanations, only the diff."
 )
 
 
 class FixerOutput(BaseModel):
     candidate_diff: str = Field(
-        description="Clean git unified diff string addressing the issue. Must start with --- and +++"
+        description=(
+            "Minimal git unified diff fixing ONLY the reported bug. "
+            "Must start with '--- a/' and '+++ b/'. Max 25 changed lines."
+        ),
+        max_length=6000,
     )
 
 
@@ -68,8 +78,9 @@ async def _call_fixer_structured(prompt: str, temperature: float, agent_name: st
         response_model=FixerOutput,
         messages=messages,
         temperature=temperature,
-        timeout_sec=45.0,
+        timeout_sec=60.0,
         client=async_llm_client,
+        max_tokens=1500,
     )
     diff = resp.candidate_diff if resp else ""
     return diff, telemetry
