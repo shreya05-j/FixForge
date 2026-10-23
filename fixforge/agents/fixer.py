@@ -58,10 +58,12 @@ def _build_fixer_prompt(state: AgentState) -> str:
                 f"{test_results.get('stdout') or test_results.get('stderr')}"
             )
 
+    ast_ctx = str(state.get('retrieved_ast_context', ''))[:2500]
+    test_res = str(test_results)[:1000]
     return (
         f"Diagnosis: {state.get('diagnosis_summary')}\n"
-        f"Context: {state.get('retrieved_ast_context')}\n"
-        f"Previous test results: {test_results}"
+        f"Context: {ast_ctx}\n"
+        f"Previous test results: {test_res}"
         f"{failure_feedback}\n"
         "Generate a valid git unified diff to fix the issue."
     )

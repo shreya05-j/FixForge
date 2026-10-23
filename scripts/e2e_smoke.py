@@ -69,7 +69,7 @@ async def run_single_smoke(run_index: int, target_url: str) -> dict:
         session_uuid = uuid.UUID(session_id_str)
 
         # 2. Wait for completion by polling GET /api/sessions/{id}
-        max_wait = 30.0
+        max_wait = 90.0
         poll_interval = 0.5
         waited = 0.0
         final_sess = None
@@ -104,6 +104,9 @@ async def run_single_smoke(run_index: int, target_url: str) -> dict:
             db_sess = q_res.scalars().first()
 
             if db_sess:
+                result["llm_mode"] = getattr(db_sess, "llm_mode", "unknown")
+                result["docker_mode"] = getattr(db_sess, "docker_mode", "unknown")
+                result["mode"] = f"{result['llm_mode']}/{result['docker_mode']}"
                 result["attempts_count"] = len(db_sess.attempts) if db_sess.attempts else 0
                 result["has_diagnosis"] = db_sess.diagnosis is not None
                 result["has_metrics"] = db_sess.metrics is not None
@@ -124,7 +127,7 @@ async def main():
     args = parser.parse_args()
 
     print("=" * 72)
-    print(" FIXFORGE AI — END-TO-END ACCEPTANCE SMOKE RUNNER (STAGE 9)")
+    print(" FIXFORGE AI — END-TO-END LIVE SMOKE RUNNER (STAGE 5)")
     print("=" * 72)
     print(f"Target URL:    {args.url}")
     print(f"Total Runs:    {args.runs}")
@@ -140,7 +143,7 @@ async def main():
         res = await run_single_smoke(i, args.url)
         results.append(res)
 
-        # Success criteria for Stage 9:
+        # Success criteria for Stage 5:
         # Status completed or unverified (honest status when Docker down), DB rows saved, confidence computed
         is_success = (
             res["status"] in ("completed", "unverified")
@@ -148,24 +151,26 @@ async def main():
             and res["has_metrics"]
             and (0.0 <= res["confidence"] <= 1.0)
         )
+        mode_str = res.get("mode", "unknown")
         if is_success:
             success_count += 1
-            print(f"PASS (Status={res['status']}, Conf={res['confidence']}, Time={res['elapsed_sec']}s)")
+            print(f"PASS (Mode={mode_str}, Status={res['status']}, Conf={res['confidence']}, Time={res['elapsed_sec']}s)")
         else:
-            print(f"FAIL (Status={res['status']}, Error={res['error']}, Time={res['elapsed_sec']}s)")
+            print(f"FAIL (Mode={mode_str}, Status={res['status']}, Error={res['error']}, Time={res['elapsed_sec']}s)")
 
-    print("\n" + "=" * 72)
-    print(" STAGE 9 GATE RESULTS: 10-RUN ACCEPTANCE SUMMARY")
-    print("=" * 72)
-    header = f"{'Run':<5} | {'Status':<12} | {'Confidence':<10} | {'Attempts':<8} | {'Diagnosis':<9} | {'Metrics':<7} | {'Time (s)':<8}"
+    print("\n" + "=" * 90)
+    print(" STAGE 5 GATE RESULTS: LIVE SMOKE TEST SUMMARY")
+    print("=" * 90)
+    header = f"{'Run':<5} | {'Mode (LLM/Docker)':<18} | {'Status':<12} | {'Confidence':<10} | {'Attempts':<8} | {'Diagnosis':<9} | {'Metrics':<7} | {'Time (s)':<8}"
     print(header)
     print("-" * len(header))
 
     for r in results:
         diag_str = "YES" if r["has_diagnosis"] else "NO"
         met_str = "YES" if r["has_metrics"] else "NO"
+        mode_val = r.get("mode", "unknown")
         print(
-            f"{r['run']:<5} | {r['status']:<12} | {r['confidence']:<10.4f} | "
+            f"{r['run']:<5} | {mode_val:<18} | {r['status']:<12} | {r['confidence']:<10.4f} | "
             f"{r['attempts_count']:<8} | {diag_str:<9} | {met_str:<7} | {r['elapsed_sec']:<8.2f}"
         )
 
