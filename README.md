@@ -10,10 +10,10 @@ FixForge AI is an explainable, self-verifying automated program repair system. I
 |---|---|---|
 | **One-Command Runner** | ✅ Operational | `.\run_all.ps1` boots backend (:8000) & frontend (:5173) with environment checks. |
 | **Backend API** | ✅ Operational | FastAPI boots cleanly; all endpoints (`/`, `/api/health`, `/api/sessions`, `/api/sessions/start`, `/api/webhooks/github`, `/api/sessions/{id}/stream`) live. |
-| **Test Suite** | ✅ 32/32 Passing | `.venv\Scripts\pytest fixforge/tests -q` executes 32 unit, security, and gate tests cleanly. |
+| **Test Suite** | ✅ 35/35 Passing | `.venv\Scripts\pytest fixforge/tests -q` executes 35 unit, security, persistence, and gate tests cleanly. |
 | **E2E Acceptance Smoke** | ✅ 10/10 Verified Live | `python scripts/e2e_smoke.py --runs 10` confirms 10 full pipeline runs in `live/live` mode with DB persistence and confidence scoring. |
-| **Evaluation Benchmark** | ✅ Honest Accounting | 100 live runs across 20 curated instances. Evaluates single-shot, static analysis, and multi-agent pipeline with strict resolution rules (see `RESULTS.md`). |
-| **Frontend Dashboard** | ✅ Operational | React 19 + TypeScript + Vite builds in 237ms; Vitest 7/7 passing; Stitch design tokens active with LIVE/PARTIAL/FALLBACK/SIMULATED badges. |
+| **Evaluation Benchmark** | ✅ Honest Accounting | 100 live runs across 20 curated instances. Evaluates single-shot, static analysis, and multi-agent pipeline with strict resolution rules (see `RESULTS.md` & `PRESENTATION_GUIDE.md`). |
+| **Frontend Dashboard** | ✅ Operational | React 19 + TypeScript + Vite builds in 237ms; Stitch design tokens active with LIVE/PARTIAL/FALLBACK/SIMULATED badges. |
 | **Docker Sandbox** | ✅ Resilient | Executes in isolated containers (`fixforge-sandbox:latest`) with non-root, read-only repo, and disabled network. |
 
 ---
@@ -24,13 +24,13 @@ FixForge AI is an explainable, self-verifying automated program repair system. I
 |---|---|---|---|---|
 | **FR-1** | GitHub Webhook Intake | Implemented | `fixforge/api/routes/webhooks.py` | HMAC SHA-256 verification (401 on mismatch), duplicate delivery ID deduplication, `/fix-bug` comment trigger. |
 | **FR-2** | Issue / PR URL Normalization | Implemented | `fixforge/api/routes/sessions.py:22` | Regex validates GitHub issue/PR URLs, rejects invalid formats with 422. |
-| **FR-3** | Planner Agent | Implemented | `fixforge/agents/planner.py` | Identifies candidate target files and repair strategy via structured LLM prompt. |
+| **FR-3** | Planner Agent | Implemented | `fixforge/agents/planner.py` | Identifies candidate target files and repair strategy via structured LLM prompt; strictly excludes non-source files. |
 | **FR-4** | Context Retrieval & AST Extraction | Implemented | `fixforge/agents/retriever.py`, `memory/ast_parser.py` | Real AST symbol extraction using `tree-sitter-python`; keyword scan fallback. |
 | **FR-5** | Historical Fix Memory (ChromaDB) | Implemented | `fixforge/memory/chroma_client.py` | Persistent vector collection in `./chroma_data`; guarded against empty index queries. |
 | **FR-6** | Diagnoser Agent | Implemented | `fixforge/agents/diagnoser.py` | Classifies failure category (`Logic Error`, `Syntax Error`, etc.) and severity rating. |
-| **FR-7** | Fixer Agent (Patch Generation) | Implemented | `fixforge/agents/fixer.py` | Primary diff at temperature 0; generates low-temp consistency samples for scoring. |
-| **FR-8** | Verifier Agent & Docker Sandbox | Implemented | `fixforge/agents/verifier.py`, `sandbox/runner.py` | Validates patches with `git apply --check`, runs containerized pytest; reports `unverified` when Docker is offline. |
-| **FR-9** | Iterative Retry Loop | Implemented | `fixforge/graph/workflow.py` | Verifier feedback loop routes back to Fixer with execution logs up to 3 attempts. |
+| **FR-7** | Fixer Agent (Patch Generation) | Implemented | `fixforge/agents/fixer.py` | Primary diff with minimal edits; non-source file mutation prohibited; consistency samples for scoring. |
+| **FR-8** | Verifier Agent & Docker Sandbox | Implemented | `fixforge/agents/verifier.py`, `sandbox/runner.py` | Multi-strategy patch engine (Strategies 1-4) with pytest validation in container; reports `unverified` when Docker is offline. |
+| **FR-9** | Iterative Retry Loop | Implemented | `fixforge/graph/workflow.py` | Verifier feedback loop routes back to Fixer with execution logs up to 4 attempts. |
 | **FR-10** | Multi-Signal Confidence Engine | Implemented | `fixforge/agents/confidence.py` | 4-signal formula (Test Pass 45%, Static 25%, Context 15%, Consistency 15%) with dynamic weight renormalization. |
 | **FR-11** | Reporter Agent & GitHub Comment | Implemented | `fixforge/agents/reporter.py`, `api/services/github.py` | Formats patch, root cause, confidence band, and disclaimer; defaults to safe `GITHUB_DRY_RUN=true`. |
 | **FR-12** | Human-in-the-Loop Actions | Implemented | `fixforge/api/routes/sessions.py:602` | Endpoints to manually approve, reject, or request retry with human guidance. |
@@ -41,10 +41,10 @@ FixForge AI is an explainable, self-verifying automated program repair system. I
 
 ### Architectural Deviations from Original SRS
 1. **Database:** Uses **SQLite** (`sqlite+aiosqlite:///./fixforge.db`) instead of PostgreSQL to allow zero-configuration local installation and testing on Windows.
-2. **LLM Provider:** Uses **Groq Cloud API** (`llama-3.3-70b-versatile`) with Instructor structured outputs instead of proprietary direct OpenAI/Anthropic APIs.
+2. **LLM Provider:** Uses **OpenAI-Compatible Endpoint** (`claude-haiku-5-5` / Groq / OpenAI) with Instructor structured outputs.
 3. **Sandbox Resilience:** The original SRS expected a hard failure when Docker is offline; FixForge implements a **graceful unverified fallback** so audits and pipelines can proceed even without Docker Desktop.
 4. **GitHub Safety:** Added `GITHUB_DRY_RUN=true` default setting to ensure local tests never inadvertently mutate public GitHub repositories.
-5. **Demo Safety:** All offline mock scenarios display an amber animated `[SIMULATED]` badge in the navigation bar and banner.
+5. **Presentation Guide:** Full architecture walkthrough, jury Q&A, and engineering challenges documented in [PRESENTATION_GUIDE.md](PRESENTATION_GUIDE.md).
 
 ---
 
