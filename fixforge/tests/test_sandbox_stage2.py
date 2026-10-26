@@ -10,8 +10,10 @@ Verifies:
 """
 
 import os
+import sys
 import tempfile
 import subprocess
+
 import pytest
 from unittest.mock import patch, AsyncMock
 from core.state import AgentState
@@ -280,8 +282,9 @@ async def test_gate_case_e_db_session_persists_unverified():
         db.add(new_sess)
         await db.commit()
 
-    initial_state = {
+    initial_state: AgentState = {
         "repo_name": "mock/repo",
+
         "issue_id": "1",
         "issue_title": "Fix bug",
         "issue_body": "Details",
@@ -411,10 +414,11 @@ def test_python_patch_script_strategy_3_resilient_matching():
             f.write(diff_text)
 
         proc = subprocess.run(
-            [subprocess.sys.executable, script_path, src_dir, patch_path],
+            [sys.executable, script_path, src_dir, patch_path],
             capture_output=True,
             text=True
         )
+
         assert proc.returncode == 0, f"Script failed: {proc.stderr}"
         with open(py_file, "r", encoding="utf-8") as f:
             content = f.read()

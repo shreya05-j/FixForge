@@ -175,9 +175,10 @@ async def test_gate_stage5_persists_review_session_row_and_streams_sse():
         result = await db.execute(stmt)
         sess = result.scalars().first()
         assert sess is not None, "ReviewSession row must be persisted in database"
-        assert sess.status == "running"
-        assert sess.repo_url == "https://github.com/pallets/flask.git"
-        assert sess.branch == "fix-cookies"
+        assert str(sess.status) == "running"
+        assert str(sess.repo_url) == "https://github.com/pallets/flask.git"
+        assert str(sess.branch) == "fix-cookies"
+
 
     # 2. Verify stream_manager history recorded the webhook_received event
     history = stream_manager._history.get(session_id_str, [])
@@ -264,9 +265,10 @@ async def test_gate_stage5_full_e2e_repair_from_webhook():
         sess = result.scalars().first()
 
         assert sess is not None
-        assert sess.status == "completed"
-        assert sess.repo_url == "https://github.com/example/repo.git"
-        assert sess.branch == "patch-777"
+        assert str(sess.status) == "completed"
+        assert str(sess.repo_url) == "https://github.com/example/repo.git"
+        assert str(sess.branch) == "patch-777"
+
 
         # Verify child records
         assert len(sess.attempts) >= 1
