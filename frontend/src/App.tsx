@@ -704,20 +704,41 @@ export default function App() {
                         <div className="flex-1 bg-surface-deep p-6 overflow-y-auto flex flex-col gap-4">
                           <div className="border border-border-muted bg-background p-4">
                             <h3 className="font-bold text-primary mb-2 flex items-center gap-2">
-                              <span className="material-symbols-outlined text-error">warning</span> Failure Mechanism
+                              <span className="material-symbols-outlined text-error">warning</span> Failure Mechanism & Root Cause
                             </h3>
-                            <p className="text-text-muted font-code-sm">
-                              {currentScenario ? currentScenario.bug : 'Loading taxonomy...'}
+                            <p className="text-text-muted font-code-sm leading-relaxed whitespace-pre-wrap">
+                              {sessionDetails?.diagnosis?.diff_trees?.root_cause ||
+                               sessionDetails?.diagnosis?.ast_context?.error ||
+                               sessionDetails?.diagnosis?.failure_classification ||
+                               (currentScenario ? currentScenario.bug : 'Awaiting diagnosis...')}
                             </p>
                           </div>
+                          {sessionDetails?.diagnosis?.diff_trees?.plan && (
+                            <div className="border border-border-muted bg-background p-4">
+                              <h3 className="font-bold text-primary mb-2 flex items-center gap-2">
+                                <span className="material-symbols-outlined text-sky-400">psychology</span> Investigation & Action Plan
+                              </h3>
+                              <p className="text-text-muted font-code-sm leading-relaxed whitespace-pre-wrap">
+                                {sessionDetails.diagnosis.diff_trees.plan}
+                              </p>
+                            </div>
+                          )}
                           <div className="border border-border-muted bg-background p-4">
                             <h3 className="font-bold text-primary mb-2 flex items-center gap-2">
-                              <span className="material-symbols-outlined text-primary">account_tree</span> Blast Radius Tree
+                              <span className="material-symbols-outlined text-primary">account_tree</span> Scoped Source Files & Blast Radius
                             </h3>
-                            <ul className="text-text-muted font-code-sm ml-4 list-disc">
-                              <li className="cursor-pointer hover:text-primary" onClick={() => toast("View caller trace")}>__init__.py (Caller)</li>
-                              <li className="cursor-pointer hover:text-primary" onClick={() => toast("View dependency trace")}>core.py (Dependency)</li>
-                            </ul>
+                            {sessionDetails?.diagnosis?.ast_context?.source_files_read?.length ? (
+                              <ul className="text-text-muted font-code-sm ml-4 list-disc space-y-1">
+                                {sessionDetails.diagnosis.ast_context.source_files_read.map((file: string, idx: number) => (
+                                  <li key={idx} className="text-primary font-mono text-xs">{file}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-text-muted font-code-sm text-xs italic">
+                                {sessionDetails?.diagnosis?.ast_context?.error ||
+                                 (currentScenario ? '__init__.py (Caller), core.py (Dependency)' : 'No target source files localized.')}
+                              </p>
+                            )}
                           </div>
                         </div>
                       )}

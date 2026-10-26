@@ -59,7 +59,9 @@ def checkout_repo(
     logger.info(f"Cloning repo {base_repo_url} into {checkout_path} (ref={ref})")
 
     clone_cmd = [
-        "git", "clone",
+        "git",
+        "-c", "core.longpaths=true",
+        "clone",
         "--depth", "1",
         "--no-tags",
         clone_url,
@@ -91,7 +93,7 @@ def checkout_repo(
         return {"path": None, "tmpdir": None, "status": "failed", "error": msg}
 
     if ref not in ("HEAD", "", "main", "master"):
-        checkout_cmd = ["git", "-C", checkout_path, "checkout", ref]
+        checkout_cmd = ["git", "-c", "core.longpaths=true", "-C", checkout_path, "checkout", ref]
         try:
             co_result = subprocess.run(
                 checkout_cmd,
