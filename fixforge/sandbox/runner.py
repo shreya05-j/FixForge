@@ -30,6 +30,13 @@ def apply_patch(repo_dir, patch_path):
             rel_path = rel_path[2:]
         rel_path = rel_path.lstrip('/')
 
+        lower_rel = rel_path.lower()
+        non_source_exts = ('.md', '.markdown', '.txt', '.rst', '.json', '.yaml', '.yml', '.toml', '.xml', '.html')
+        non_source_names = ('readme', 'license', 'licence', 'dockerfile', 'makefile', 'contributing')
+        if any(lower_rel.endswith(ext) for ext in non_source_exts) or any(lower_rel == n or lower_rel.startswith(n + '.') for n in non_source_names):
+            print(f'Refusing to patch non-source documentation file: {rel_path}', file=sys.stderr)
+            return False
+
         target_path = os.path.join(repo_dir, rel_path)
         if not os.path.exists(target_path):
             base = os.path.basename(rel_path)
@@ -50,27 +57,47 @@ def apply_patch(repo_dir, patch_path):
             hunk = hunk.strip()
             if not hunk.startswith('@@'):
                 continue
+            hunk_header_m = re.match(r'^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@', hunk)
+            old_start = int(hunk_header_m.group(1)) if hunk_header_m else 1
+
             hunk_lines = hunk.splitlines()[1:]
             old_lines = []
             new_lines = []
+            del_lines = []
+            add_lines = []
+            ctx_before = []
+            ctx_after = []
+            seen_changes = False
+
             for ln in hunk_lines:
                 if ln.startswith('-'):
                     old_lines.append(ln[1:])
+                    del_lines.append(ln[1:])
+                    seen_changes = True
                 elif ln.startswith('+'):
                     new_lines.append(ln[1:])
+                    add_lines.append(ln[1:])
+                    seen_changes = True
                 elif ln.startswith(' '):
                     old_lines.append(ln[1:])
                     new_lines.append(ln[1:])
+                    if not seen_changes:
+                        ctx_before.append(ln[1:])
+                    else:
+                        ctx_after.append(ln[1:])
 
             if not old_lines and not new_lines:
                 continue
 
             matched = False
+            # Strategy 1: Exact match of all old_lines (including context)
             for idx in range(len(file_lines) - len(old_lines) + 1):
                 if file_lines[idx : idx + len(old_lines)] == old_lines:
                     file_lines[idx : idx + len(old_lines)] = new_lines
                     matched = True
                     break
+
+            # Strategy 2: Stripped match of all old_lines (whitespace tolerant)
             if not matched:
                 stripped_old = [l.strip() for l in old_lines]
                 for idx in range(len(file_lines) - len(old_lines) + 1):
@@ -78,6 +105,67 @@ def apply_patch(repo_dir, patch_path):
                         file_lines[idx : idx + len(old_lines)] = new_lines
                         matched = True
                         break
+
+            # Strategy 3: Selective Deleted-Lines Matching with Context Scoring
+            if not matched and del_lines:
+                stripped_del = [l.strip() for l in del_lines if l.strip()]
+                if stripped_del:
+                    candidates = []
+                    for idx in range(len(file_lines) - len(stripped_del) + 1):
+                        sub = [file_lines[idx + k].strip() for k in range(len(stripped_del))]
+                        if sub == stripped_del:
+                            score = 0
+                            for k, ctx in enumerate(reversed(ctx_before)):
+                                check_idx = idx - 1 - k
+                                if 0 <= check_idx < len(file_lines) and file_lines[check_idx].strip() == ctx.strip():
+                                    score += 1
+                            for k, ctx in enumerate(ctx_after):
+                                check_idx = idx + len(stripped_del) + k
+                                if 0 <= check_idx < len(file_lines) and file_lines[check_idx].strip() == ctx.strip():
+                                    score += 1
+                            candidates.append((score, idx))
+
+                    if candidates:
+                        # Rank by highest context score, then proximity to hunk start line
+                        candidates.sort(key=lambda c: (-c[0], abs(c[1] - (old_start - 1))))
+                        best_score, best_idx = candidates[0]
+
+                        orig_indent = ""
+                        m_indent = re.match(r"^(\s*)", file_lines[best_idx])
+                        if m_indent:
+                            orig_indent = m_indent.group(1)
+
+                        adapted_add = []
+                        del_indent = ""
+                        if del_lines and del_lines[0]:
+                            m_d = re.match(r"^(\s*)", del_lines[0])
+                            if m_d:
+                                del_indent = m_d.group(1)
+
+                        for al in add_lines:
+                            if del_indent and al.startswith(del_indent):
+                                adapted_add.append(orig_indent + al[len(del_indent):])
+                            else:
+                                adapted_add.append(al)
+
+                        file_lines[best_idx : best_idx + len(stripped_del)] = adapted_add
+                        matched = True
+
+            # Strategy 4: Pure insertion (add_lines only) anchored on context
+            if not matched and not del_lines and add_lines and ctx_before:
+                last_ctx = ctx_before[-1].strip()
+                if last_ctx:
+                    for idx in range(len(file_lines)):
+                        if file_lines[idx].strip() == last_ctx:
+                            orig_indent = ""
+                            m_indent = re.match(r"^(\s*)", file_lines[idx])
+                            if m_indent:
+                                orig_indent = m_indent.group(1)
+                            adapted_add = [orig_indent + al.strip() for al in add_lines]
+                            file_lines[idx + 1 : idx + 1] = adapted_add
+                            matched = True
+                            break
+
             if not matched:
                 print(f'Hunk failed to match in {target_path}', file=sys.stderr)
                 return False
@@ -95,6 +183,33 @@ if __name__ == '__main__':
     ok = apply_patch(sys.argv[1], sys.argv[2])
     sys.exit(0 if ok else 1)
 '''
+
+
+def is_patch_targeting_non_source(diff_text: str) -> Optional[str]:
+    """
+    Checks if diff targets non-source files (.md, .txt, .rst, README, LICENSE, etc.).
+    Returns the target file name if non-source, else None.
+    """
+    if not diff_text:
+        return None
+    matches = re.findall(r'^\+\+\+ [b/]*(.*?)$', diff_text, re.MULTILINE)
+    for target in matches:
+        target = target.strip()
+        if target.startswith(('a/', 'b/')):
+            target = target[2:]
+        target = target.lstrip('/')
+        if not target or target == '/dev/null':
+            continue
+        lower = target.lower()
+        non_source_exts = (
+            '.md', '.markdown', '.txt', '.rst', '.json', '.yaml', '.yml',
+            '.toml', '.ini', '.cfg', '.xml', '.html', '.css', '.png', '.jpg', '.jpeg', '.svg'
+        )
+        non_source_names = ('readme', 'license', 'licence', 'dockerfile', 'makefile', 'contributing', 'changelog', 'requirements.txt')
+        if any(lower.endswith(ext) for ext in non_source_exts) or any(lower == n or lower.startswith(n + '.') for n in non_source_names):
+            return target
+    return None
+
 
 
 def sanitize_unified_diff(diff_text: str) -> str:
@@ -257,6 +372,32 @@ def run_in_sandbox(repo_path: str, diff_patch: str, test_cmd: str = "pytest") ->
             "stderr": f"Repository path not found: {repo_path}",
             "error": f"Repository path not found: {repo_path}"
         }
+
+    if not diff_patch or not diff_patch.strip():
+        return {
+            "status": "patch_failed",
+            "passed": False,
+            "exit_code": 42,
+            "stdout": "",
+            "stderr": "error: No valid patch diff provided to verify.",
+            "error": "error: No valid patch diff provided to verify."
+        }
+
+    non_source_target = is_patch_targeting_non_source(diff_patch)
+    if non_source_target:
+        err = (
+            f"error: Patch rejected - targets non-source documentation file '{non_source_target}'. "
+            "FixForge Autonomous Program Repair only patches Python source code files (.py)."
+        )
+        return {
+            "status": "patch_failed",
+            "passed": False,
+            "exit_code": 42,
+            "stdout": "",
+            "stderr": err,
+            "error": err
+        }
+
 
     # 1. Probe Docker daemon availability
     try:

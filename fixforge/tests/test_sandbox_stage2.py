@@ -326,3 +326,98 @@ async def test_gate_case_e_db_session_persists_unverified():
         print(f"  repo:    {saved_session.repo_url}")
 
         assert str(saved_session.status) == "unverified", f"Expected 'unverified', got '{saved_session.status}'"
+
+
+def test_non_source_patch_early_rejection():
+    """
+    Verifies that run_in_sandbox immediately rejects patches targeting README.md or other non-code files
+    without launching Docker, returning status='patch_failed' and exit_code=42.
+    """
+    from sandbox.runner import is_patch_targeting_non_source
+
+    readme_diff = (
+        "--- a/README.md\n"
+        "+++ b/README.md\n"
+        "@@ -1,3 +1,3 @@\n"
+        "-# Title\n"
+        "+# Title Enhanced\n"
+    )
+    assert is_patch_targeting_non_source(readme_diff) == "README.md"
+
+    py_diff = (
+        "--- a/src/calc.py\n"
+        "+++ b/src/calc.py\n"
+        "@@ -1,3 +1,3 @@\n"
+        "-x = 1\n"
+        "+x = 2\n"
+    )
+    assert is_patch_targeting_non_source(py_diff) is None
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = run_in_sandbox(tmpdir, readme_diff)
+        assert result["status"] == "patch_failed"
+        assert result["exit_code"] == 42
+        assert "non-source documentation file" in result["error"]
+
+
+def test_empty_patch_early_rejection():
+    """
+    Verifies that run_in_sandbox immediately rejects empty or whitespace patches.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = run_in_sandbox(tmpdir, "   \n\n  ")
+        assert result["status"] == "patch_failed"
+        assert result["exit_code"] == 42
+        assert "No valid patch diff provided" in result["error"]
+
+
+def test_python_patch_script_strategy_3_resilient_matching():
+    """
+    Verifies that PYTHON_PATCH_SCRIPT Strategy 3 successfully matches and replaces target lines
+    even when the surrounding context lines in the diff are hallucinated by LLMs.
+    """
+    from sandbox.runner import PYTHON_PATCH_SCRIPT
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        script_path = os.path.join(tmpdir, "apply.py")
+        with open(script_path, "w", encoding="utf-8") as f:
+            f.write(PYTHON_PATCH_SCRIPT)
+
+        src_dir = os.path.join(tmpdir, "repo")
+        os.makedirs(src_dir, exist_ok=True)
+        py_file = os.path.join(src_dir, "search.py")
+        with open(py_file, "w", encoding="utf-8") as f:
+            f.write(
+                "def search(items, target):\n"
+                "    idx = 0\n"
+                "    while True:\n"
+                "        if items[idx] == target:\n"
+                "            return idx\n"
+            )
+
+        # Notice hallucinated comment in context lines
+        diff_text = (
+            "--- a/search.py\n"
+            "+++ b/search.py\n"
+            "@@ -1,5 +1,5 @@\n"
+            " def search(items, target):\n"
+            "# hallucinated line that does not exist in source\n"
+            "-    while True:\n"
+            "+    while idx < len(items):\n"
+            "         if items[idx] == target:\n"
+        )
+        patch_path = os.path.join(tmpdir, "patch.diff")
+        with open(patch_path, "w", encoding="utf-8") as f:
+            f.write(diff_text)
+
+        proc = subprocess.run(
+            [subprocess.sys.executable, script_path, src_dir, patch_path],
+            capture_output=True,
+            text=True
+        )
+        assert proc.returncode == 0, f"Script failed: {proc.stderr}"
+        with open(py_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "while idx < len(items):" in content
+        assert "while True:" not in content
+

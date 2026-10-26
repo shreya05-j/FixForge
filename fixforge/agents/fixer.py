@@ -28,8 +28,11 @@ _SYSTEM_PROMPT = (
     "Do NOT refactor, add features, or rewrite unrelated code.\n"
     "4. Copy context lines VERBATIM character-by-character from the provided code snippet including exact indentation.\n"
     "5. Keep hunks minimal: 2-3 lines of unchanged context above and below the change.\n"
-    "6. Never output conversational explanations, only the unified diff."
+    "6. Never output conversational explanations, only the unified diff.\n"
+    "7. NEVER target or modify documentation, markdown (.md), text files (.txt), README, or non-source files. "
+    "Only target real Python source files (.py)."
 )
+
 
 
 class FixerOutput(BaseModel):
@@ -116,6 +119,16 @@ async def run_fixer(state: AgentState) -> Dict[str, Any]:
     primary_temp = 0.0 if retry_count == 0 else 0.2
     diff, primary_telemetry = await _call_fixer_structured(prompt, primary_temp, "Fixer")
 
+    from sandbox.runner import is_patch_targeting_non_source
+
+    non_source_target = is_patch_targeting_non_source(diff)
+    if non_source_target:
+        logger.warning(
+            "Fixer produced diff targeting non-source documentation file '%s'. Discarding diff.",
+            non_source_target,
+        )
+        diff = ""
+
     if not diff:
         logger.error("Fixer produced empty diff after LLM call.")
 
@@ -133,12 +146,13 @@ async def run_fixer(state: AgentState) -> Dict[str, Any]:
                     agent_name=f"Fixer-ConsistencySampler-{i+1}"
                 )
                 consistency_telemetry.append(sample_telemetry)
-                if sample:
+                if sample and not is_patch_targeting_non_source(sample):
                     consistency_samples.append(sample)
                     logger.debug("Consistency sample %d/%d generated (%d chars).", i + 1, n_samples, len(sample))
             except Exception as exc:
                 logger.warning("Consistency sample %d/%d skipped due to rate limit/error: %s", i + 1, n_samples, exc)
                 break
+
 
     logger.info(
         "Fixer: primary diff %d chars, %d/%d consistency samples collected.",

@@ -85,7 +85,10 @@ async def run_retriever(state: AgentState) -> Dict[str, Any]:
     # Resolve target_files relative to the checkout root.
     resolved_files = []
     
-    if explicit_target:
+    def _is_py_file(path_str: str) -> bool:
+        return path_str.lower().endswith(('.py', '.pyi', '.pyx'))
+
+    if explicit_target and _is_py_file(explicit_target):
         candidate = explicit_target if os.path.isabs(explicit_target) else os.path.join(checkout_path, explicit_target)
         if os.path.isfile(candidate):
             resolved_files.append(candidate)
@@ -94,11 +97,15 @@ async def run_retriever(state: AgentState) -> Dict[str, Any]:
 
     if target_files:
         for tf in target_files:
+            if not _is_py_file(tf):
+                logger.info(f"Skipping non-Python candidate suggested by Planner: {tf}")
+                continue
             candidate = tf if os.path.isabs(tf) else os.path.join(checkout_path, tf)
             if os.path.isfile(candidate) and candidate not in resolved_files:
                 resolved_files.append(candidate)
             else:
                 logger.warning(f"Planner-specified file not found: {tf} -> {candidate}")
+
 
     if not resolved_files:
         # Fallback: scan the whole repo for Python files prioritizing hints and primary dirs.

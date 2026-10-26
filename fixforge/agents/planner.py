@@ -25,7 +25,14 @@ async def run_planner(state: AgentState) -> Dict[str, Any]:
 
     prompt = f"Issue Title: {state.get('issue_title')}\nIssue Body: {state.get('issue_body')}\nTrace: {state.get('stack_trace')}{hint_info}"
     messages = [
-        {"role": "system", "content": "You are a Principal Software Engineer planning a bug fix. Output a structured plan and list of files."},
+        {
+            "role": "system",
+            "content": (
+                "You are a Principal Software Engineer planning a bug fix for an automated Python repair system. "
+                "Output a structured plan and list of Python source code files (.py). "
+                "NEVER target documentation files (e.g. README.md, *.md, *.txt, *.rst, LICENSE) or non-source files."
+            )
+        },
         {"role": "user", "content": prompt}
     ]
 
@@ -44,8 +51,21 @@ async def run_planner(state: AgentState) -> Dict[str, Any]:
         plan_val = "Fallback plan: Identify fault and patch."
         target_files_val = []
 
+    # Strict filtering: FixForge only targets Python source code files
+    non_code_exts = ('.md', '.markdown', '.txt', '.rst', '.json', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.xml', '.html', '.css')
+    non_code_names = ('license', 'licence', 'readme', 'dockerfile', 'makefile', 'contributing', 'changelog')
+
+    target_files_val = [
+        f for f in target_files_val
+        if not any(f.lower().endswith(ext) for ext in non_code_exts)
+        and not any(f.lower() == n or f.lower().startswith(n + '.') for n in non_code_names)
+    ]
+
     if state.get("target_file") and state.get("target_file") not in target_files_val:
-        target_files_val.insert(0, str(state.get("target_file")))
+        tf_str = str(state.get("target_file"))
+        if not any(tf_str.lower().endswith(ext) for ext in non_code_exts):
+            target_files_val.insert(0, tf_str)
+
 
     return {
         'plan': plan_val,
