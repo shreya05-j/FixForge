@@ -24,10 +24,12 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from core.config import settings
+from core.state import AgentState
 from db.session import get_db
 from db.models import ReviewSession
 from api.routes.sessions import run_repair_workflow
 from api.routes.streams import stream_manager
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -59,7 +61,8 @@ def _build_initial_state(
     issue_id: str,
     issue_title: str,
     issue_body: str,
-) -> dict:
+) -> AgentState:
+
     """Builds the shared initial AgentState for both webhook and /start paths."""
     return {
         "repo_name": repo_name,

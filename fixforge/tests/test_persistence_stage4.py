@@ -19,6 +19,8 @@ from sqlalchemy.orm import selectinload
 from db.models import ReviewSession, AgentAttempt, DiagnosisRecord, ConfidenceMetric
 from db.session import AsyncSessionLocal, engine, Base
 from api.routes.sessions import run_repair_workflow, get_session
+from core.state import AgentState
+
 
 
 @pytest.mark.asyncio
@@ -43,8 +45,9 @@ async def test_gate_stage4_persistence_matching():
         db.add(sess)
         await db.commit()
 
-    initial_state = {
+    initial_state: AgentState = {
         "repo_name": "pallets/flask",
+
         "repo_url": "https://github.com/pallets/flask/issues/5012",
         "branch": "main",
         "issue_id": "5012",
@@ -247,8 +250,9 @@ async def test_gate_stage4_failure_case_persists_readable_error():
         db.add(sess)
         await db.commit()
 
-    initial_state = {
+    initial_state: AgentState = {
         "repo_name": "mock/failure_repo",
+
         "repo_url": "https://github.com/mock/failure_repo",
         "branch": "main",
         "issue_id": "999",

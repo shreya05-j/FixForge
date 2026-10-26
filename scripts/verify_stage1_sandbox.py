@@ -51,8 +51,9 @@ with tempfile.TemporaryDirectory() as tmp_ro:
         )
         print("UNEXPECTED: Write succeeded on read-only mount!")
     except docker.errors.ContainerError as e:
-        err_msg = e.stderr.decode("utf-8", errors="replace").strip() if isinstance(e.stderr, bytes) else str(e.stderr or "").strip()
+        err_msg = e.stderr.decode("utf-8", errors="replace").strip() if isinstance(e.stderr, bytes) else (e.stderr or "").strip()
         print(f"CONFIRMED: Write failed as expected -> {err_msg}")
+
 
 # 4. Memory / Time Limits
 print("\n[SECURITY CLAIM 4: Memory limit (runaway memory killed)]")

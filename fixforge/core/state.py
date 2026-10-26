@@ -1,7 +1,7 @@
-from typing import List, Dict, Any, Optional, Literal
-from typing_extensions import TypedDict
+from typing import TypedDict, List, Dict, Any, Optional, Literal
 
 class AgentState(TypedDict, total=False):
+
     repo_name: str
     repo_url: Optional[str]
     branch: Optional[str]

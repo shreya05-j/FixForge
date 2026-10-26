@@ -61,10 +61,11 @@ async def run_planner(state: AgentState) -> Dict[str, Any]:
         and not any(f.lower() == n or f.lower().startswith(n + '.') for n in non_code_names)
     ]
 
-    if state.get("target_file") and state.get("target_file") not in target_files_val:
-        tf_str = str(state.get("target_file"))
-        if not any(tf_str.lower().endswith(ext) for ext in non_code_exts):
-            target_files_val.insert(0, tf_str)
+    target_file = state.get("target_file")
+    if target_file and target_file not in target_files_val:
+        if not any(target_file.lower().endswith(ext) for ext in non_code_exts):
+            target_files_val.insert(0, target_file)
+
 
 
     return {
