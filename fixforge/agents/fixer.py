@@ -18,7 +18,8 @@ async_llm_client = get_async_client()
 
 logger = logging.getLogger(__name__)
 
-_FIXER_MODEL = getattr(settings, "FIXFORGE_MODEL", "qwen/qwen3.8-27b")
+_FIXER_MODEL = getattr(settings, "FIXFORGE_MODEL", "claude-haiku-5-5")
+
 _SYSTEM_PROMPT = (
     "You are a precise software engineer producing MINIMAL bug fixes.\n"
     "Rules:\n"

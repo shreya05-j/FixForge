@@ -106,8 +106,9 @@ async def _create_session_and_launch(
     session_id_str = str(session_id)
 
     # Probe active modes
-    active_llm = "live" if (settings.GROQ_API_KEY and len(settings.GROQ_API_KEY) > 10) else "fallback"
+    active_llm = "live" if ((settings.OPENAI_API_KEY and len(settings.OPENAI_API_KEY) > 5) or (settings.GROQ_API_KEY and len(settings.GROQ_API_KEY) > 10)) else "fallback"
     active_docker = "unavailable"
+
     try:
         import docker
         d_client = docker.from_env()

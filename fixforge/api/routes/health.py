@@ -14,18 +14,20 @@ import docker
 import docker.errors
 from fastapi import APIRouter
 from core.config import settings
-from groq import Groq
+from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 def check_llm_mode() -> dict:
-    if not settings.GROQ_API_KEY or len(settings.GROQ_API_KEY) < 10:
-        return {"mode": "fallback", "detail": "GROQ_API_KEY not configured"}
+    api_key = settings.OPENAI_API_KEY or settings.GROQ_API_KEY
+    if not api_key or len(api_key) < 5:
+        return {"mode": "fallback", "detail": "LLM API key not configured"}
     try:
-        client = Groq(api_key=settings.GROQ_API_KEY)
-        model_name = getattr(settings, "FIXFORGE_MODEL", "qwen/qwen3.8-27b")
+        base_url = settings.OPENAI_BASE_URL or "https://api.ai.kodekloud.com/v1"
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        model_name = getattr(settings, "FIXFORGE_MODEL", "claude-haiku-5-5")
         resp = client.chat.completions.create(
             model=model_name,
             messages=[{"role": "user", "content": "ping"}],
@@ -37,6 +39,7 @@ def check_llm_mode() -> dict:
     except Exception as exc:
         logger.warning("Health LLM validation failed: %s", type(exc).__name__)
         return {"mode": "fallback", "detail": type(exc).__name__}
+
 
 
 def check_docker_and_sandbox() -> tuple[dict, str]:

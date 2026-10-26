@@ -38,10 +38,13 @@ async def verify():
         print("   ❌ ChromaDB error:", type(e).__name__)
 
     print("4. Checking LLM API Keys...")
-    if settings.GROQ_API_KEY:
+    if settings.OPENAI_API_KEY:
+        print(f"   ✅ OPENAI_API_KEY is configured ({settings.OPENAI_BASE_URL}, model: {settings.FIXFORGE_MODEL}).")
+    elif settings.GROQ_API_KEY:
         print("   ✅ GROQ_API_KEY is configured.")
     else:
-        print("   ⚠️ GROQ_API_KEY is NOT configured. Agent LLM calls may fail.")
+        print("   ⚠️ LLM API key is NOT configured. Agent LLM calls may fail.")
+
 
     print("5. Triggering Mock Webhook Payload...")
     payload = {

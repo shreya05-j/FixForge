@@ -1,6 +1,8 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    OPENAI_API_KEY: str = ""
+    OPENAI_BASE_URL: str = "https://api.ai.kodekloud.com/v1"
     GROQ_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     CHROMA_PERSIST_DIR: str = "./chroma_data"
@@ -21,7 +23,8 @@ class Settings(BaseSettings):
     WORKFLOW_TIMEOUT_SEC: int = 300
     # Stage 7: LLM consistency check — number of low-temp samples for the Fixer.
     LLM_CONSISTENCY_SAMPLES: int = 2
-    FIXFORGE_MODEL: str = "qwen/qwen3.8-27b"
+    FIXFORGE_MODEL: str = "claude-haiku-5-5"
+
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

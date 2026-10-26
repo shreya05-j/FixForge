@@ -20,9 +20,11 @@ import asyncio
 import logging
 from typing import Type, TypeVar, Tuple, Optional, Any, Dict
 from pydantic import BaseModel
-from groq import RateLimitError
+from openai import RateLimitError
 from core.llm import async_llm_client
 from core.config import settings
+
+
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
@@ -100,8 +102,9 @@ async def call_structured_llm(
         (parsed_pydantic_model or None, telemetry_dict)
     """
     target_client = client if client is not None else async_llm_client
-    model_name = getattr(settings, "FIXFORGE_MODEL", "qwen/qwen3.8-27b")
+    model_name = getattr(settings, "FIXFORGE_MODEL", "claude-haiku-5-5")
     backoff = 1.0
+
 
     # 1. Deterministic unit testing support: if chat.completions.create is mocked
     active_client = target_client

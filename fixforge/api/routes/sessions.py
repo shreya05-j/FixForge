@@ -504,7 +504,7 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: AgentState
                         "attempt_number": 1,
                         "status": v_status,
                         "source": fixer_telemetry.get("source", "llm"),
-                        "model_name": fixer_telemetry.get("model", "qwen/qwen3.8-27b"),
+                        "model_name": fixer_telemetry.get("model", "claude-haiku-5-5"),
                         "tokens_used": fixer_telemetry.get("total_tokens", 0),
                         "latency_sec": fixer_telemetry.get("latency_sec", 0.0),
                         "patch_diff": final_diff,
@@ -518,7 +518,7 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: AgentState
                         attempt_number=att.get("attempt_number", 1),
                         status=att.get("status", "completed"),
                         source=att.get("source", fixer_telemetry.get("source", "llm")),
-                        model_name=att.get("model_name", fixer_telemetry.get("model", "qwen/qwen3.8-27b")),
+                        model_name=att.get("model_name", fixer_telemetry.get("model", "claude-haiku-5-5")),
                         tokens_used=att.get("tokens_used", fixer_telemetry.get("total_tokens", 0)),
                         latency_sec=att.get("latency_sec", fixer_telemetry.get("latency_sec", 0.0)),
                         patch_diff=att.get("patch_diff", final_diff),
@@ -533,7 +533,7 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: AgentState
                     failure_classification=merged_state.get("failure_category", "Logic Error"),
                     severity_rating=merged_state.get("severity", "Medium"),
                     source=diag_telemetry.get("source", "llm"),
-                    model_name=diag_telemetry.get("model", "qwen/qwen3.8-27b"),
+                    model_name=diag_telemetry.get("model", "claude-haiku-5-5"),
                     tokens_used=diag_telemetry.get("total_tokens", 0),
                     latency_sec=diag_telemetry.get("latency_sec", 0.0),
                     ast_context=merged_state.get("retrieved_ast_context") or {},
@@ -678,8 +678,9 @@ async def start_session(
 
     session_id = uuid.uuid4()
     
-    active_llm = "live" if (settings.GROQ_API_KEY and len(settings.GROQ_API_KEY) > 10) else "fallback"
+    active_llm = "live" if ((settings.OPENAI_API_KEY and len(settings.OPENAI_API_KEY) > 5) or (settings.GROQ_API_KEY and len(settings.GROQ_API_KEY) > 10)) else "fallback"
     active_docker = "unavailable"
+
     try:
         import docker
         d_client = docker.from_env()

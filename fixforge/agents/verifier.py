@@ -18,7 +18,8 @@ async def run_verifier(state: AgentState) -> Dict[str, Any]:
         "attempt_number": current_retry + 1,
         "status": results.get("status", "failed"),
         "source": fixer_telem.get("source", "llm"),
-        "model_name": fixer_telem.get("model", "qwen/qwen3.8-27b"),
+        "model_name": fixer_telem.get("model", "claude-haiku-5-5"),
+
         "tokens_used": fixer_telem.get("total_tokens", 0),
         "latency_sec": fixer_telem.get("latency_sec", 0.0),
         "patch_diff": candidate_diff,
