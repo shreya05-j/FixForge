@@ -31,26 +31,27 @@ class DatasetLoader:
                 data = json.load(f)
         else:
             logger.info("Fetching from Hugging Face...")
-            dataset = load_dataset(self.dataset_name, split=split)
-            data = [
-                {
-                    "instance_id": item["instance_id"],
-                    "repo": item["repo"],
-                    "base_commit": item["base_commit"],
-                    "problem_statement": item["problem_statement"],
-                    "hints_text": item.get("hints_text", ""),
-                    "created_at": item.get("created_at", ""),
-                    "patch": item.get("patch", ""),
-                    "test_patch": item.get("test_patch", ""),
-                    "version": item.get("version", ""),
-                    "fail_to_pass": item.get("fail_to_pass", []),
-                    "pass_to_pass": item.get("pass_to_pass", []),
-                    "environment_setup_commit": item.get("environment_setup_commit", "")
-                }
-                for item in dataset
-            ]
+            dataset: Any = load_dataset(self.dataset_name, split=split)
+            data = []
+            for item in dataset:
+                it: Any = item
+                data.append({
+                    "instance_id": it["instance_id"],
+                    "repo": it["repo"],
+                    "base_commit": it["base_commit"],
+                    "problem_statement": it["problem_statement"],
+                    "hints_text": it.get("hints_text", ""),
+                    "created_at": it.get("created_at", ""),
+                    "patch": it.get("patch", ""),
+                    "test_patch": it.get("test_patch", ""),
+                    "version": it.get("version", ""),
+                    "fail_to_pass": it.get("fail_to_pass", []),
+                    "pass_to_pass": it.get("pass_to_pass", []),
+                    "environment_setup_commit": it.get("environment_setup_commit", "")
+                })
             with open(cache_file, "w") as f:
                 json.dump(data, f, indent=2)
+
                 
         if limit is not None:
             data = data[:limit]

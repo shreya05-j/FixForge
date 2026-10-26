@@ -3,7 +3,8 @@ import logging
 import uuid
 import random
 import json
-from typing import List, Dict
+from typing import List, Dict, Any
+
 from rich.progress import Progress
 import scipy.stats as stats
 
@@ -11,10 +12,16 @@ from .dataset_loader import DatasetLoader
 from .metrics import MetricsTracker
 
 try:
-    from fixforge.graph.workflow import build_workflow
+    from graph.workflow import build_workflow
     GRAPH_AVAILABLE = True
 except ImportError:
-    GRAPH_AVAILABLE = False
+    try:
+        from fixforge.graph.workflow import build_workflow
+        GRAPH_AVAILABLE = True
+    except ImportError:
+        build_workflow = None  # type: ignore
+        GRAPH_AVAILABLE = False
+
     
 logger = logging.getLogger(__name__)
 
@@ -30,7 +37,9 @@ class AblationRunner:
     def __init__(self, metrics_tracker: MetricsTracker):
         self.dataset_loader = DatasetLoader()
         self.metrics_tracker = metrics_tracker
-        self.graph = build_workflow() if GRAPH_AVAILABLE else None
+        self.graph = build_workflow() if (GRAPH_AVAILABLE and build_workflow) else None
+
+
         
     async def _mock_invoke(self, state: Dict, config_id: int) -> Dict:
         await asyncio.sleep(0.2)
@@ -69,8 +78,9 @@ class AblationRunner:
         
         try:
             if self.graph:
-                result_state = await self.graph.ainvoke(initial_state)
+                result_state = await self.graph.ainvoke(initial_state)  # type: ignore
             else:
+
                 result_state = await self._mock_invoke(initial_state, config_id)
             
             resolved = result_state.get("test_results", {}).get("passed", False)
@@ -109,17 +119,20 @@ class AblationRunner:
             ground_truth = [1.0 if x["resolved"] else 0.0 for x in data]
             
             if len(scores) > 1 and len(set(ground_truth)) > 1:
-                pearson_r, _ = stats.pearsonr(scores, ground_truth)
-                spearman_r, _ = stats.spearmanr(scores, ground_truth)
+                p_res: Any = stats.pearsonr(scores, ground_truth)
+                s_res: Any = stats.spearmanr(scores, ground_truth)
+                pearson_val = float(getattr(p_res, "statistic", p_res[0]))
+                spearman_val = float(getattr(s_res, "statistic", s_res[0]))
             else:
-                pearson_r, spearman_r = 0.0, 0.0
+                pearson_val, spearman_val = 0.0, 0.0
                 
             correlations[config_id] = {
                 "config_name": self.CONFIGS[config_id],
-                "pearson_r": float(pearson_r),
-                "spearman_r": float(spearman_r)
+                "pearson_r": pearson_val,
+                "spearman_r": spearman_val
             }
-            print(f"Config {config_id}: Pearson: {pearson_r:.4f}, Spearman: {spearman_r:.4f}")
+            print(f"Config {config_id}: Pearson: {pearson_val:.4f}, Spearman: {spearman_val:.4f}")
+
             
         # Export correlations
         import os
