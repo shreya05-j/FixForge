@@ -3,7 +3,15 @@
 
 @layer base {
   body {
-    @apply bg-surface-dim text-on-surface h-screen w-screen overflow-hidden flex flex-col font-body-base text-body-base;
+    background-color: #15121b;
+    color: #e7e0ed;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+    font-size: 0.875rem;
   }
 }
 

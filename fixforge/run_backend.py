@@ -1,7 +1,8 @@
 import uvicorn
-import os
+from core.config import settings
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    print(f"Starting FixForge Backend on port {port}...")
-    uvicorn.run("api.main:app", host="0.0.0.0", port=port, reload=True)
+    host = settings.HOST
+    port = settings.PORT
+    print(f"Starting FixForge Backend on {host}:{port}...")
+    uvicorn.run("api.main:app", host=host, port=port, reload=True)

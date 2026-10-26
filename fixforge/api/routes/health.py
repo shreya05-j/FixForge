@@ -11,6 +11,7 @@ Validates:
 
 import logging
 import docker
+import docker.errors
 from fastapi import APIRouter
 from core.config import settings
 from groq import Groq

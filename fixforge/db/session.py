@@ -1,9 +1,10 @@
+from typing import Dict, Any
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from core.config import settings
 from db.models import Base
 
 is_postgres = "postgresql" in settings.DATABASE_URL
-engine_kwargs = {
+engine_kwargs: Dict[str, Any] = {
     "echo": False,
     "future": True,
 }

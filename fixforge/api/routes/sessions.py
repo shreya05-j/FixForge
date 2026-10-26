@@ -3,7 +3,7 @@ import re
 import time
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 from db.session import get_db, AsyncSessionLocal
 from db.models import ReviewSession, AgentAttempt, DiagnosisRecord, ConfidenceMetric
 from graph.workflow import build_workflow
+from core.state import AgentState
 from api.routes.streams import stream_manager
 from repo_checkout import checkout_repo
 from core.config import settings
@@ -21,27 +22,68 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 GITHUB_URL_PATTERN = re.compile(
-    r"^https?://github\.com/(?P<owner>[a-zA-Z0-9_.-]+)/(?P<repo>[a-zA-Z0-9_.-]+)/(?P<type>issues|pull)/(?P<number>\d+)(?:[/?#].*)?$"
+    r"^https?://github\.com/(?P<owner>[a-zA-Z0-9_.-]+)/(?P<repo>[a-zA-Z0-9_.-]+)(?:/(?P<type>issues|pulls?)/(?P<number>\d+))?(?:\.git)?(?:[/?#].*)?$"
+)
+GITHUB_SHORT_PATTERN = re.compile(
+    r"^(?P<owner>[a-zA-Z0-9_.-]+)/(?P<repo>[a-zA-Z0-9_.-]+)(?:#(?P<number>\d+))?$"
 )
 
+def parse_github_target(raw_url: str) -> Optional[dict]:
+    trimmed = raw_url.strip()
+    m = GITHUB_URL_PATTERN.match(trimmed)
+    if m:
+        owner = m.group("owner")
+        repo = m.group("repo").removesuffix(".git")
+        itype = m.group("type")
+        num = m.group("number")
+        if not itype or not num:
+            itype = "issue"
+            num = "1"
+        else:
+            itype = "pull" if "pull" in itype else "issue"
+        return {
+            "owner": owner,
+            "repo": repo,
+            "type": itype,
+            "number": num,
+            "repo_url": f"https://github.com/{owner}/{repo}",
+            "canonical_url": f"https://github.com/{owner}/{repo}/{itype}/{num}" if m.group("type") else f"https://github.com/{owner}/{repo}"
+        }
+    
+    m_short = GITHUB_SHORT_PATTERN.match(trimmed)
+    if m_short:
+        owner = m_short.group("owner")
+        repo = m_short.group("repo").removesuffix(".git")
+        num = m_short.group("number") or "1"
+        return {
+            "owner": owner,
+            "repo": repo,
+            "type": "issue",
+            "number": num,
+            "repo_url": f"https://github.com/{owner}/{repo}",
+            "canonical_url": f"https://github.com/{owner}/{repo}"
+        }
+    return None
+
 class StartSessionRequest(BaseModel):
-    url: str = Field(..., description="Target GitHub issue or pull request URL")
+    url: str = Field(..., description="Target GitHub issue, pull request, or repository URL")
 
     @field_validator("url")
     @classmethod
     def validate_github_url(cls, v: str) -> str:
         trimmed = v.strip()
-        if not GITHUB_URL_PATTERN.match(trimmed):
+        parsed = parse_github_target(trimmed)
+        if not parsed:
             raise ValueError(
-                "Invalid GitHub URL format. Must be a valid issue or pull request URL, "
-                "e.g. https://github.com/owner/repo/issues/1 or https://github.com/owner/repo/pull/1"
+                "Invalid GitHub URL or repository slug. Please provide a valid GitHub issue/PR URL "
+                "(e.g. https://github.com/pallets/flask/issues/5012) or repository URL (e.g. https://github.com/pallets/flask)."
             )
         return trimmed
 
 class ActionRequest(BaseModel):
     action: str
 
-async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
+async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: AgentState):
     """Executes the LangGraph repair pipeline asynchronously and broadcasts live SSE events.
     
     Checkout lifecycle:
@@ -58,7 +100,7 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
 
     stream_manager.publish_event(session_id_str, "node_start", {
         "agent": "planner",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "input_summary": f"Planning investigation for {initial_state['repo_name']} #{initial_state['issue_id']}"
     })
     stream_manager.publish_event(session_id_str, "node_progress", {
@@ -132,7 +174,7 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                         })
                         stream_manager.publish_event(session_id_str, "node_start", {
                             "agent": "retriever",
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
                             "input_summary": "Searching AST symbols and ChromaDB memory..."
                         })
 
@@ -148,7 +190,7 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                         })
                         stream_manager.publish_event(session_id_str, "node_start", {
                             "agent": "diagnoser",
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
                             "input_summary": "Classifying failure category and severity..."
                         })
 
@@ -166,7 +208,7 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                         })
                         stream_manager.publish_event(session_id_str, "node_start", {
                             "agent": "fixer",
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
                             "input_summary": "Generating candidate unified diff patch..."
                         })
                         diff_preview = merged_state.get('candidate_diff', '')
@@ -185,7 +227,7 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                         })
                         stream_manager.publish_event(session_id_str, "node_start", {
                             "agent": "verifier",
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
                             "input_summary": "Executing tests in isolated sandbox container..."
                         })
                         stream_manager.publish_event(session_id_str, "node_progress", {
@@ -208,6 +250,11 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                                 "status": "unverified",
                                 "output": {"passed": False, "status": "unverified", "error": v_err}
                             })
+                            stream_manager.publish_event(session_id_str, "node_start", {
+                                "agent": "confidence_engine",
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "input_summary": "Unverified execution. Calculating confidence score..."
+                            })
                         elif v_status == "patch_failed":
                             stream_manager.publish_event(session_id_str, "node_progress", {
                                 "log_line": f"[REJECTED] Candidate patch failed git apply --check: {v_err[:120]}"
@@ -223,6 +270,18 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                                 "iteration": retry_cnt,
                                 "message": f"Attempt {retry_cnt} of 3 triggered due to git apply rejection"
                             })
+                            if retry_cnt < 3:
+                                stream_manager.publish_event(session_id_str, "node_start", {
+                                    "agent": "fixer",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "input_summary": f"Retry {retry_cnt}/3: Re-synthesizing fix with verification feedback..."
+                                })
+                            else:
+                                stream_manager.publish_event(session_id_str, "node_start", {
+                                    "agent": "confidence_engine",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "input_summary": "Max retries reached. Calculating confidence score..."
+                                })
                         elif not passed:
                             stream_manager.publish_event(session_id_str, "node_progress", {
                                 "log_line": "[FAILED] Sandbox test suite execution failed."
@@ -238,6 +297,18 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                                 "iteration": retry_cnt,
                                 "message": f"Attempt {retry_cnt} of 3 triggered due to test verification failure"
                             })
+                            if retry_cnt < 3:
+                                stream_manager.publish_event(session_id_str, "node_start", {
+                                    "agent": "fixer",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "input_summary": f"Retry {retry_cnt}/3: Re-synthesizing fix with verification failure feedback..."
+                                })
+                            else:
+                                stream_manager.publish_event(session_id_str, "node_start", {
+                                    "agent": "confidence_engine",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "input_summary": "Max retries reached. Calculating confidence score..."
+                                })
                         else:
                             stream_manager.publish_event(session_id_str, "node_progress", {
                                 "log_line": "[PASSED] Test verification succeeded in isolated sandbox."
@@ -250,7 +321,7 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                             })
                             stream_manager.publish_event(session_id_str, "node_start", {
                                 "agent": "confidence_engine",
-                                "timestamp": datetime.utcnow().isoformat(),
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
                                 "input_summary": "Calculating confidence score breakdown..."
                             })
 
@@ -273,7 +344,7 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: dict):
                         })
                         stream_manager.publish_event(session_id_str, "node_start", {
                             "agent": "reporter",
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
                             "input_summary": "Generating final GitHub review comment..."
                         })
 
@@ -526,18 +597,19 @@ async def start_session(
     db: AsyncSession = Depends(get_db)
 ):
     """Initialize a new repair session for a GitHub issue/PR and launch the background workflow."""
-    match = GITHUB_URL_PATTERN.match(payload.url)
-    if not match:
+    parsed = parse_github_target(payload.url)
+    if not parsed:
         raise HTTPException(
             status_code=422,
-            detail="Invalid GitHub URL. Expected format: https://github.com/:owner/:repo/issues/:number or https://github.com/:owner/:repo/pull/:number"
+            detail="Invalid GitHub URL. Expected format: https://github.com/:owner/:repo/issues/:number or https://github.com/:owner/:repo"
         )
     
-    owner = match.group("owner")
-    repo = match.group("repo")
-    issue_type = match.group("type")
-    issue_number = match.group("number")
+    owner = parsed["owner"]
+    repo = parsed["repo"]
+    issue_type = parsed["type"]
+    issue_number = parsed["number"]
     repo_name = f"{owner}/{repo}"
+    target_repo_url = parsed["repo_url"]
 
     session_id = uuid.uuid4()
     
@@ -554,7 +626,7 @@ async def start_session(
     try:
         new_session = ReviewSession(
             id=session_id,
-            repo_url=payload.url,
+            repo_url=target_repo_url,
             branch="main",
             status="running",
             llm_mode=active_llm,
@@ -568,9 +640,9 @@ async def start_session(
         logger.exception(f"Database write failed while creating session: {db_err}")
         raise HTTPException(status_code=500, detail="Database write failure while initializing session")
 
-    initial_state = {
+    initial_state: AgentState = {
         "repo_name": repo_name,
-        "repo_url": payload.url,
+        "repo_url": target_repo_url,
         "branch": "main",
         "issue_id": issue_number,
         "issue_title": f"{issue_type.capitalize()} #{issue_number}",

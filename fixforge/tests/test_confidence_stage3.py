@@ -187,18 +187,15 @@ def test_gate_worse_patch_yields_lower_score():
     good_score = calculate_confidence_breakdown(base_state)["overall_score"]
 
     # Worse patch 1: fails test verification
-    worse_state_1 = dict(base_state)
-    worse_state_1["test_results"] = {"passed": False, "status": "failed", "stdout": "FAILED test_divide"}
+    worse_state_1 = AgentState({**base_state, "test_results": {"passed": False, "status": "failed", "stdout": "FAILED test_divide"}})
     worse_score_1 = calculate_confidence_breakdown(worse_state_1)["overall_score"]
 
     # Worse patch 2: introduces syntax error
-    worse_state_2 = dict(base_state)
-    worse_state_2["candidate_diff"] = "def divide(a, b):\n    if b == 0: ((((broken syntax\n"
+    worse_state_2 = AgentState({**base_state, "candidate_diff": "def divide(a, b):\n    if b == 0: ((((broken syntax\n"})
     worse_score_2 = calculate_confidence_breakdown(worse_state_2)["overall_score"]
 
     # Worse patch 3: low LLM consistency (divergent patch)
-    worse_state_3 = dict(base_state)
-    worse_state_3["consistency_samples"] = ["def multiply(a, b): return a * b\n"]
+    worse_state_3 = AgentState({**base_state, "consistency_samples": ["def multiply(a, b): return a * b\n"]})
     worse_score_3 = calculate_confidence_breakdown(worse_state_3)["overall_score"]
 
     print(f"\n[Stage 3 Gate Proof] Clean patch score:       {good_score * 100:.1f}%")

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { mockScenarios } from '../data/mockScenarios';
 import { DemoPlaybackEngine } from '../utils/demoPlayback';
+import { API_BASE_URL } from '../config/env';
 
 export interface AgentNode {
   agent: string;
@@ -76,7 +77,7 @@ export function useFixForgeStream(sessionId: string) {
       eventSourceRef.current.close();
     }
 
-    const baseUrl = 'http://localhost:8000';
+    const baseUrl = API_BASE_URL;
     const es = new EventSource(`${baseUrl}/api/sessions/${sessionId}/stream`);
     eventSourceRef.current = es;
 
@@ -154,27 +155,16 @@ export function useFixForgeStream(sessionId: string) {
     });
 
     es.onerror = (error) => {
-      console.error("SSE Connection Error:", error);
+      console.warn("SSE Connection closed or complete:", error);
       es.close();
 
       if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
-        const backoffMs = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 10000);
+        const backoffMs = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 5000);
         reconnectAttemptsRef.current++;
         reconnectTimeoutRef.current = setTimeout(connect, backoffMs);
       } else {
-        // Automatically degrade to offline demo mode
-        console.warn("Max reconnects reached. Falling back to offline demo mode.");
-        setState(prev => ({ ...prev, error: 'Connection lost. Falling back to offline demo.' }));
-        
-        // Wait 2 seconds, then load the default demo
-        setTimeout(() => {
-           const fallbackEngine = new DemoPlaybackEngine(mockScenarios['demo-flask'], (update) => {
-              setState(update);
-           });
-           engineRef.current = fallbackEngine;
-           setState(prev => ({...prev, isDemo: true, error: null}));
-           fallbackEngine.play();
-        }, 2000);
+        // Stream completed or server closed connection for finished session
+        setState(prev => ({ ...prev, isComplete: true, isStreaming: false, error: null }));
       }
     };
 

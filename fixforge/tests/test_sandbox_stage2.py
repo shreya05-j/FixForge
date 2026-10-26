@@ -24,6 +24,7 @@ from agents.fixer import FixerOutput
 
 
 import docker
+import docker.errors
 
 
 def test_gate_case_c_docker_stopped_returns_unverified():
@@ -231,6 +232,7 @@ async def test_gate_verifier_surfaces_unverified_to_pipeline_and_halts_retries()
     with patch("graph.nodes.run_planner", new_callable=AsyncMock) as mock_p, \
          patch("graph.nodes.run_diagnoser", new_callable=AsyncMock) as mock_d, \
          patch("graph.nodes.run_fixer", new_callable=AsyncMock) as mock_f, \
+         patch("sandbox.runner.docker.from_env", side_effect=docker.errors.DockerException("Docker daemon unavailable: connection refused")), \
          patch("agents.reporter.post_pr_review_comment", new_callable=AsyncMock):
 
         mock_p.return_value = {"plan": "Investigate issue", "target_files": [], "status": "planner_completed"}
@@ -303,6 +305,7 @@ async def test_gate_case_e_db_session_persists_unverified():
     with patch("graph.nodes.run_planner", new_callable=AsyncMock) as mock_p, \
          patch("graph.nodes.run_diagnoser", new_callable=AsyncMock) as mock_d, \
          patch("graph.nodes.run_fixer", new_callable=AsyncMock) as mock_f, \
+         patch("sandbox.runner.docker.from_env", side_effect=docker.errors.DockerException("Docker daemon unavailable: connection refused")), \
          patch("agents.reporter.post_pr_review_comment", new_callable=AsyncMock):
 
         mock_p.return_value = {"plan": "Fix", "target_files": [], "status": "planner_completed"}
@@ -315,11 +318,11 @@ async def test_gate_case_e_db_session_persists_unverified():
         stmt = select(ReviewSession).where(ReviewSession.id == session_id)
         result = await db.execute(stmt)
         saved_session = result.scalars().first()
+        assert saved_session is not None
 
         print(f"\n[Stage 2 Gate Case E] SQLite ReviewSession row:")
         print(f"  id:      {saved_session.id}")
         print(f"  status:  {saved_session.status}")
         print(f"  repo:    {saved_session.repo_url}")
 
-        assert saved_session is not None
-        assert saved_session.status == "unverified", f"Expected 'unverified', got '{saved_session.status}'"
+        assert str(saved_session.status) == "unverified", f"Expected 'unverified', got '{saved_session.status}'"

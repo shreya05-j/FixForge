@@ -19,7 +19,7 @@ async def run_diagnoser(state: AgentState) -> Dict[str, Any]:
     ForgeDiagnoser: Identifies root cause and predicts severity using structured outputs.
     """
     ast_ctx = str(state.get('retrieved_ast_context', ''))[:3000]
-    issue_b = str(state.get('issue_body', ''))[:1500]
+    issue_b = state.get('issue_body', '')[:1500]
     prompt = f"Context: {ast_ctx}\nIssue: {issue_b}"
     messages = [
         {"role": "system", "content": "You are a Software Diagnoser. Determine the root cause, failure category, and severity from the provided context."},

@@ -9,9 +9,14 @@ $WorkspaceRoot = (Get-Item $PSScriptRoot).Parent.FullName
 Set-Location $WorkspaceRoot
 
 # 1. Check Python Environment
-$PythonPath = (Get-Command python -ErrorAction SilentlyContinue).Source
+$venvPython = Join-Path $WorkspaceRoot ".venv\Scripts\python.exe"
+if (Test-Path $venvPython) {
+    $PythonPath = $venvPython
+} else {
+    $PythonPath = (Get-Command python -ErrorAction SilentlyContinue).Source
+}
 if (-not $PythonPath) {
-    Write-Host "[ERROR] Python was not found in PATH." -ForegroundColor Red
+    Write-Host "[ERROR] Python was not found in PATH or .venv." -ForegroundColor Red
     exit 1
 }
 Write-Host "[INFO] Python executable: $PythonPath" -ForegroundColor Green
@@ -39,7 +44,7 @@ if (-not (Test-Path $envFile)) {
 
 # 4. Start Backend Service
 Write-Host "[INFO] Starting FastAPI Backend on http://127.0.0.1:8000..." -ForegroundColor Cyan
-$backendJob = Start-Process -FilePath "python" -ArgumentList "run_backend.py" -WorkingDirectory (Join-Path $WorkspaceRoot "fixforge") -PassThru
+$backendJob = Start-Process -FilePath $PythonPath -ArgumentList "run_backend.py" -WorkingDirectory (Join-Path $WorkspaceRoot "fixforge") -PassThru
 
 # Wait 3 seconds for backend to boot
 Start-Sleep -Seconds 3

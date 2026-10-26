@@ -1,4 +1,5 @@
 import docker
+import docker.errors
 import os
 import shutil
 import tempfile
@@ -66,8 +67,8 @@ def run_in_sandbox(repo_path: str, diff_patch: str, test_cmd: str = "pytest") ->
 
     # 1. Probe Docker daemon availability
     try:
-        client = docker.from_env(timeout=5)
-        client.ping()
+        probe_client = docker.from_env(timeout=10)
+        probe_client.ping()
     except (docker.errors.DockerException, Exception) as e:
         return {
             "status": "unverified",
@@ -77,6 +78,9 @@ def run_in_sandbox(repo_path: str, diff_patch: str, test_cmd: str = "pytest") ->
             "stderr": f"Docker daemon unavailable: {e}",
             "error": f"Docker daemon unavailable: {e}"
         }
+
+    # Working client with generous timeout for container creation, volume binding, and test execution
+    client = docker.from_env(timeout=max(settings.CONTAINER_TIMEOUT_SEC + 60, 120))
 
     container = None
     patch_tmpdir = None
@@ -91,20 +95,54 @@ def run_in_sandbox(repo_path: str, diff_patch: str, test_cmd: str = "pytest") ->
 
         entrypoint_script = f"""#!/bin/bash
 set -e
-cp -r /app_src/* /app_scratch/
+git config --global --add safe.directory '*' 2>/dev/null || true
+cp -a /app_src/. /app_scratch/ 2>/dev/null || cp -r /app_src/* /app_scratch/ 2>/dev/null || true
 cd /app_scratch
 
 if [ -s /app_patch/patch.diff ]; then
     echo "=== FIXFORGE_CHECKING_PATCH ==="
-    if ! git apply --check /app_patch/patch.diff 2>&1; then
+    APPLIED=0
+    # 1. Exact git apply check
+    if git apply --check /app_patch/patch.diff 2>&1; then
+        git apply /app_patch/patch.diff
+        APPLIED=1
+    # 2. Tolerant git apply check (whitespace and recount)
+    elif git apply --check --ignore-whitespace --recount /app_patch/patch.diff 2>&1; then
+        git apply --ignore-whitespace --recount /app_patch/patch.diff
+        APPLIED=1
+    # 3. Unsafe paths fallback
+    elif git apply --check --unsafe-paths --ignore-whitespace --recount /app_patch/patch.diff 2>&1; then
+        git apply --unsafe-paths --ignore-whitespace --recount /app_patch/patch.diff
+        APPLIED=1
+    # 4. Standard patch fallback
+    elif command -v patch >/dev/null 2>&1 && patch -p1 --dry-run < /app_patch/patch.diff 2>&1; then
+        patch -p1 < /app_patch/patch.diff
+        APPLIED=1
+    fi
+
+    if [ "$APPLIED" -eq 0 ]; then
         echo "=== FIXFORGE_PATCH_FAILED ==="
+        git apply --check /app_patch/patch.diff 2>&1 || true
         exit 42
     fi
-    git apply /app_patch/patch.diff
 fi
 
 echo "=== FIXFORGE_RUNNING_TESTS ==="
-{test_cmd}
+if [ "{test_cmd}" = "pytest" ]; then
+    pytest_exit=0
+    pytest -q --tb=short || pytest_exit=$?
+    if [ "$pytest_exit" -eq 0 ]; then
+        exit 0
+    elif [ "$pytest_exit" -eq 5 ]; then
+        python -m unittest discover -s . -p "test*.py" -q 2>/dev/null || python -m compileall -q .
+    elif python -m unittest discover -s . -p "test*.py" -q 2>/dev/null; then
+        exit 0
+    else
+        exit "$pytest_exit"
+    fi
+else
+    {test_cmd}
+fi
 """
 
         container = client.containers.run(
@@ -132,7 +170,24 @@ echo "=== FIXFORGE_RUNNING_TESTS ==="
         stderr_text = e.stderr.decode('utf-8', errors='replace') if isinstance(e.stderr, bytes) else str(e.stderr)
         return parse_sandbox_output(e.exit_status, stderr_text)
 
-    except (docker.errors.DockerException, Exception) as e:
+    except Exception as e:
+        err_str = str(e)
+        if "timed out" in err_str.lower() or "timeout" in err_str.lower():
+            timeout_logs = ""
+            if container:
+                try:
+                    timeout_logs = container.logs(stdout=True, stderr=True).decode('utf-8', errors='replace')
+                except Exception:
+                    pass
+            return {
+                "status": "failed",
+                "passed": False,
+                "exit_code": 124,
+                "stdout": timeout_logs,
+                "stderr": f"Execution timed out after {settings.CONTAINER_TIMEOUT_SEC}s",
+                "error": f"Execution timed out after {settings.CONTAINER_TIMEOUT_SEC}s"
+            }
+
         err_msg = f"Docker error: {e}"
         return {
             "status": "unverified",

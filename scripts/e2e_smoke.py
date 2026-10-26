@@ -19,6 +19,7 @@ import asyncio
 import json
 import time
 import uuid
+from typing import Dict, Any
 
 # Ensure fixforge package is in pythonpath
 WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -37,7 +38,7 @@ from db.models import ReviewSession, AgentAttempt, DiagnosisRecord, ConfidenceMe
 
 async def run_single_smoke(run_index: int, target_url: str) -> dict:
     start_time = time.time()
-    result = {
+    result: Dict[str, Any] = {
         "run": run_index,
         "session_id": None,
         "status": "error",
@@ -107,13 +108,14 @@ async def run_single_smoke(run_index: int, target_url: str) -> dict:
                 result["llm_mode"] = getattr(db_sess, "llm_mode", "unknown")
                 result["docker_mode"] = getattr(db_sess, "docker_mode", "unknown")
                 result["mode"] = f"{result['llm_mode']}/{result['docker_mode']}"
-                result["attempts_count"] = len(db_sess.attempts) if db_sess.attempts else 0
+                attempts_list = list(getattr(db_sess, "attempts", []) or [])
+                result["attempts_count"] = len(attempts_list)
                 result["has_diagnosis"] = db_sess.diagnosis is not None
                 result["has_metrics"] = db_sess.metrics is not None
                 if db_sess.metrics:
-                    result["confidence"] = round(float(db_sess.metrics.overall_score), 4)
-                if db_sess.attempts and len(db_sess.attempts) > 0:
-                    last_patch = db_sess.attempts[-1].patch_diff or ""
+                    result["confidence"] = round(float(getattr(db_sess.metrics, "overall_score", 0.0)), 4)
+                if attempts_list:
+                    last_patch = getattr(attempts_list[-1], "patch_diff", "") or ""
                     result["diff_len"] = len(last_patch)
 
     result["elapsed_sec"] = round(time.time() - start_time, 2)

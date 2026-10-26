@@ -113,15 +113,19 @@ async def run_fixer(state: AgentState) -> Dict[str, Any]:
 
     if diff and n_samples > 0:
         for i in range(n_samples):
-            sample, sample_telemetry = await _call_fixer_structured(
-                prompt,
-                temperature=0.15,
-                agent_name=f"Fixer-ConsistencySampler-{i+1}"
-            )
-            consistency_telemetry.append(sample_telemetry)
-            if sample:
-                consistency_samples.append(sample)
-                logger.debug("Consistency sample %d/%d generated (%d chars).", i + 1, n_samples, len(sample))
+            try:
+                sample, sample_telemetry = await _call_fixer_structured(
+                    prompt,
+                    temperature=0.15,
+                    agent_name=f"Fixer-ConsistencySampler-{i+1}"
+                )
+                consistency_telemetry.append(sample_telemetry)
+                if sample:
+                    consistency_samples.append(sample)
+                    logger.debug("Consistency sample %d/%d generated (%d chars).", i + 1, n_samples, len(sample))
+            except Exception as exc:
+                logger.warning("Consistency sample %d/%d skipped due to rate limit/error: %s", i + 1, n_samples, exc)
+                break
 
     logger.info(
         "Fixer: primary diff %d chars, %d/%d consistency samples collected.",

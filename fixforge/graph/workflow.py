@@ -30,7 +30,7 @@ def build_workflow():
         retries = state.get("retry_count", 0)
         
         if status == "unverified":
-            return "reporter"
+            return "confidence_engine"
         elif test_passed:
             return "confidence_engine"
         elif retries < settings.MAX_RETRIES:

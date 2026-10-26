@@ -1,9 +1,12 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Float, Text, DateTime, ForeignKey, Integer, JSON, Uuid
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+
+def utc_now():
+    return datetime.now(timezone.utc)
 
 class ReviewSession(Base):
     __tablename__ = 'review_sessions'
@@ -14,8 +17,8 @@ class ReviewSession(Base):
     status = Column(String, default="pending")
     llm_mode = Column(String, default="fallback")
     docker_mode = Column(String, default="unavailable")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     
     attempts = relationship("AgentAttempt", back_populates="session", cascade="all, delete-orphan")
     diagnosis = relationship("DiagnosisRecord", back_populates="session", uselist=False, cascade="all, delete-orphan")
@@ -34,7 +37,7 @@ class AgentAttempt(Base):
     latency_sec = Column(Float, default=0.0)
     patch_diff = Column(Text, nullable=True)
     test_logs = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     
     session = relationship("ReviewSession", back_populates="attempts")
 
@@ -51,7 +54,7 @@ class DiagnosisRecord(Base):
     latency_sec = Column(Float, default=0.0)
     ast_context = Column(JSON, nullable=True)
     diff_trees = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     
     session = relationship("ReviewSession", back_populates="diagnosis")
 
@@ -64,6 +67,6 @@ class ConfidenceMetric(Base):
     compilation_confidence = Column(Float, default=0.0)
     test_pass_confidence = Column(Float, default=0.0)
     semantic_preservation_score = Column(Float, default=0.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     
     session = relationship("ReviewSession", back_populates="metrics")

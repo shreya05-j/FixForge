@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Dict, List, Set
 from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse
@@ -61,30 +61,30 @@ stream_manager = SessionStreamManager()
 async def mock_event_generator(session_id: str) -> AsyncGenerator[dict, None]:
     """Generates mock SSE events for local testing if requested directly."""
     events = [
-        {"event": "node_start", "data": {"agent": "planner", "timestamp": datetime.utcnow().isoformat(), "input_summary": "Planning fix strategy..."}},
+        {"event": "node_start", "data": {"agent": "planner", "timestamp": datetime.now(timezone.utc).isoformat(), "input_summary": "Planning fix strategy..."}},
         {"event": "node_progress", "data": {"chunk": "Analyzing stack trace and repo context... "}},
         {"event": "node_complete", "data": {"agent": "planner", "latency": 0.8, "status": "completed", "output": {"plan": "Synthesize regression test and patch condition."}}},
         
-        {"event": "node_start", "data": {"agent": "retriever", "timestamp": datetime.utcnow().isoformat(), "input_summary": "Searching AST symbols and ChromaDB fixes..."}},
+        {"event": "node_start", "data": {"agent": "retriever", "timestamp": datetime.now(timezone.utc).isoformat(), "input_summary": "Searching AST symbols and ChromaDB fixes..."}},
         {"event": "node_progress", "data": {"log_line": "Found 2 matching historical fix patterns."}},
         {"event": "node_complete", "data": {"agent": "retriever", "latency": 0.6, "status": "completed", "output": {"symbols": ["fix_condition", "validate_input"]}}},
         
-        {"event": "node_start", "data": {"agent": "diagnoser", "timestamp": datetime.utcnow().isoformat(), "input_summary": "Classifying bug category and severity..."}},
+        {"event": "node_start", "data": {"agent": "diagnoser", "timestamp": datetime.now(timezone.utc).isoformat(), "input_summary": "Classifying bug category and severity..."}},
         {"event": "node_progress", "data": {"log_line": "Failure category identified: Logic Error (Severity: High)"}},
         {"event": "node_complete", "data": {"agent": "diagnoser", "latency": 0.9, "status": "completed", "output": {"category": "Logic Error", "severity": "High"}}},
         
-        {"event": "node_start", "data": {"agent": "fixer", "timestamp": datetime.utcnow().isoformat(), "input_summary": "Generating unified patch diff..."}},
+        {"event": "node_start", "data": {"agent": "fixer", "timestamp": datetime.now(timezone.utc).isoformat(), "input_summary": "Generating unified patch diff..."}},
         {"event": "node_progress", "data": {"chunk": "--- a/src/app.py\n+++ b/src/app.py\n@@ -10,3 +10,3 @@\n- return False\n+ return True\n"}},
         {"event": "node_complete", "data": {"agent": "fixer", "latency": 1.4, "status": "completed", "output": {"diff_generated": True}}},
         
-        {"event": "node_start", "data": {"agent": "verifier", "timestamp": datetime.utcnow().isoformat(), "input_summary": "Running sandbox tests..."}},
+        {"event": "node_start", "data": {"agent": "verifier", "timestamp": datetime.now(timezone.utc).isoformat(), "input_summary": "Running sandbox tests..."}},
         {"event": "node_progress", "data": {"log_line": "[pytest] 1 passed in 0.04s"}},
         {"event": "node_complete", "data": {"agent": "verifier", "latency": 1.1, "status": "completed", "output": {"passed": True}}},
         
-        {"event": "node_start", "data": {"agent": "confidence_engine", "timestamp": datetime.utcnow().isoformat(), "input_summary": "Calculating confidence score..."}},
+        {"event": "node_start", "data": {"agent": "confidence_engine", "timestamp": datetime.now(timezone.utc).isoformat(), "input_summary": "Calculating confidence score..."}},
         {"event": "node_complete", "data": {"agent": "confidence_engine", "latency": 0.3, "status": "completed", "output": {"score": 0.92}}},
         
-        {"event": "node_start", "data": {"agent": "reporter", "timestamp": datetime.utcnow().isoformat(), "input_summary": "Preparing GitHub review report..."}},
+        {"event": "node_start", "data": {"agent": "reporter", "timestamp": datetime.now(timezone.utc).isoformat(), "input_summary": "Preparing GitHub review report..."}},
         {"event": "node_complete", "data": {"agent": "reporter", "latency": 0.4, "status": "completed", "output": {"comment_ready": True}}},
         
         {"event": "pipeline_complete", "data": {

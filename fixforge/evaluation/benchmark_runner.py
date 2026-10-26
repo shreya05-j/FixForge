@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional
 from .dataset_loader import DatasetLoader
 from .metrics import MetricsTracker, get_calibration_band
 
+build_workflow = None
 try:
     from graph.workflow import build_workflow
     GRAPH_AVAILABLE = True
@@ -15,6 +16,11 @@ except ImportError:
         GRAPH_AVAILABLE = True
     except ImportError:
         GRAPH_AVAILABLE = False
+
+try:
+    from core.state import AgentState
+except ImportError:
+    from fixforge.core.state import AgentState  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +34,7 @@ class BenchmarkRunner:
     def __init__(self, metrics_tracker: MetricsTracker):
         self.dataset_loader = DatasetLoader()
         self.metrics_tracker = metrics_tracker
-        self.graph = build_workflow() if GRAPH_AVAILABLE else None
+        self.graph = build_workflow() if (GRAPH_AVAILABLE and build_workflow is not None) else None
 
     async def _execute_pipeline_simulated(self, instance: Dict[str, Any], run_index: int) -> Dict[str, Any]:
         """Deterministic evaluation model when external LLM credentials or Docker daemon are offline."""
@@ -79,7 +85,7 @@ class BenchmarkRunner:
         """Runs the complete FixForge LangGraph workflow for a single instance."""
         start_time = time.time()
         
-        initial_state = {
+        initial_state: AgentState = AgentState({
             "repo_name": instance.get("repo", "unknown/repo"),
             "repo_url": f"https://github.com/{instance.get('repo', 'unknown/repo')}.git",
             "branch": "main",
@@ -100,11 +106,11 @@ class BenchmarkRunner:
             "confidence_score": 0.0,
             "confidence_breakdown": {},
             "status": "running"
-        }
+        })
 
         try:
             # Run the real LangGraph workflow if configured, or fall back to high-fidelity evaluation model
-            if self.graph and False:  # Graph invocation branch when live models and Docker are available
+            if self.graph and instance.get("use_live_graph", False):  # Graph invocation branch when live models and Docker are available
                 res_state = await self.graph.ainvoke(initial_state)
                 is_resolved = res_state.get("test_results", {}).get("passed", False)
                 retries = res_state.get("retry_count", 0)

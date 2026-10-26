@@ -3,6 +3,10 @@ import { useFixForgeStream } from './hooks/useFixForgeStream';
 import { Toaster, toast } from 'sonner';
 import { mockScenarios } from './data/mockScenarios';
 import DiffViewer from './components/DiffViewer';
+import WorkstationView from './components/WorkstationView';
+import TelemetryView from './components/TelemetryView';
+import ChromaDBView from './components/ChromaDBView';
+import { API_BASE_URL } from './config/env';
 import './index.css';
 
 const pipelineOrder = [
@@ -15,10 +19,14 @@ const pipelineOrder = [
   'reporter'
 ];
 
+type SidebarTab = 'executions' | 'workstation' | 'telemetry' | 'chromadb';
+
 export default function App() {
   const [sessionId, setSessionId] = useState<string>('');
   const [activeSession, setActiveSession] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'diff' | 'diagnosis' | 'logs' | 'history'>('diff');
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('executions');
+  const [sessionDetails, setSessionDetails] = useState<any>(null);
 
   // Interactive States
   const [isNewRunModalOpen, setIsNewRunModalOpen] = useState(false);
@@ -47,7 +55,7 @@ export default function App() {
   const [health, setHealth] = useState<HealthInfo | null>(null);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/health')
+    fetch(`${API_BASE_URL}/api/health`)
       .then(r => r.json())
       .then(data => setHealth(data))
       .catch(() => setHealth({
@@ -58,6 +66,38 @@ export default function App() {
         github_mode: 'dry_run'
       }));
   }, []);
+
+  const [liveSessions, setLiveSessions] = useState<any[]>([]);
+
+  const fetchLiveSessions = () => {
+    fetch(`${API_BASE_URL}/api/sessions`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) setLiveSessions(data);
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchLiveSessions();
+  }, []);
+
+  useEffect(() => {
+    if (!activeSession) {
+      setSessionDetails(null);
+      return;
+    }
+    if (mockScenarios[activeSession]) {
+      setSessionDetails(null);
+      return;
+    }
+    fetch(`${API_BASE_URL}/api/sessions/${activeSession}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setSessionDetails(data);
+      })
+      .catch(() => {});
+  }, [activeSession]);
 
   const streamState = useFixForgeStream(activeSession || '');
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -92,22 +132,33 @@ export default function App() {
     if (!newRunUrl) return;
     try {
       toast.info("Triggering new analysis...");
-      const res = await fetch('http://localhost:8000/api/sessions/start', {
+      const res = await fetch(`${API_BASE_URL}/api/sessions/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: newRunUrl })
       });
-      if (!res.ok) throw new Error('API failed');
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        const errorDetail =
+          errorData?.detail ||
+          (Array.isArray(errorData?.detail) ? errorData.detail[0]?.msg : null) ||
+          'Failed to start analysis.';
+        toast.error(`Analysis Request Error: ${errorDetail}`);
+        return;
+      }
       const data = await res.json();
       setSessionId(data.session_id);
       setActiveSession(data.session_id);
       setIsNewRunModalOpen(false);
-      toast.success("Analysis started!");
-    } catch (err) {
-      toast.error("Backend offline. Falling back to Demo Scenario A.");
-      setSessionId('demo-flask');
-      setActiveSession('demo-flask');
-      setIsNewRunModalOpen(false);
+      setNewRunUrl('');
+      fetchLiveSessions();
+      toast.success("Live analysis started!");
+    } catch (err: any) {
+      toast.error(
+        err?.message === 'Failed to fetch'
+          ? "Cannot reach backend. Please ensure the backend is running on port 8000."
+          : (err?.message || "Error starting analysis")
+      );
     }
   };
 
@@ -118,7 +169,7 @@ export default function App() {
     }
     try {
       toast.loading("Approving PR...", { id: 'approve' });
-      const res = await fetch(`http://localhost:8000/api/sessions/${activeSession}/action`, {
+      const res = await fetch(`${API_BASE_URL}/api/sessions/${activeSession}/action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'approve_pr' })
@@ -138,7 +189,7 @@ export default function App() {
     }
     try {
       toast.loading("Requesting retry loop...", { id: 'retry' });
-      const res = await fetch(`http://localhost:8000/api/sessions/${activeSession}/action`, {
+      const res = await fetch(`${API_BASE_URL}/api/sessions/${activeSession}/action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'request_retry', guidance: retryGuidance })
@@ -243,9 +294,18 @@ export default function App() {
             }}
           >
             <option value="">Select Session / Demo...</option>
-            <optgroup label="Live Sessions">
-              <option value="live-1">issue-1084-pallets-flask</option>
-            </optgroup>
+            {liveSessions.length > 0 && (
+              <optgroup label="Live Backend Sessions">
+                {liveSessions.map((s) => {
+                  const repoLabel = s.repository?.replace('https://github.com/', '') || s.repository || 'Session';
+                  return (
+                    <option key={s.id} value={s.id}>
+                      {repoLabel} (#{s.id.slice(0, 8)}) — {s.status.toUpperCase()}
+                    </option>
+                  );
+                })}
+              </optgroup>
+            )}
             <optgroup label="Demo Scenarios (Offline)">
               {Object.values(mockScenarios).map(sc => (
                 <option key={sc.id} value={sc.id}>{sc.title}</option>
@@ -266,9 +326,30 @@ export default function App() {
         </div>
 
         <nav className="hidden md:flex items-center gap-6">
-          <a className="text-primary font-bold border-b-2 border-primary h-16 flex items-center pt-0.5 cursor-pointer active:opacity-80">Dashboard</a>
-          <a className="text-text-muted font-body-md hover:text-primary transition-colors duration-200 cursor-pointer active:opacity-80 flex h-16 items-center">Agents</a>
-          <a className="text-text-muted font-body-md hover:text-primary transition-colors duration-200 cursor-pointer active:opacity-80 flex h-16 items-center">Repositories</a>
+          <button 
+            onClick={() => setSidebarTab('executions')}
+            className={`${sidebarTab === 'executions' ? 'text-primary font-bold border-b-2 border-primary' : 'text-text-muted hover:text-primary'} h-16 flex items-center pt-0.5 cursor-pointer font-body-md transition-colors`}
+          >
+            Dashboard
+          </button>
+          <button 
+            onClick={() => setSidebarTab('workstation')}
+            className={`${sidebarTab === 'workstation' ? 'text-primary font-bold border-b-2 border-primary' : 'text-text-muted hover:text-primary'} h-16 flex items-center pt-0.5 cursor-pointer font-body-md transition-colors`}
+          >
+            Workstation
+          </button>
+          <button 
+            onClick={() => setSidebarTab('telemetry')}
+            className={`${sidebarTab === 'telemetry' ? 'text-primary font-bold border-b-2 border-primary' : 'text-text-muted hover:text-primary'} h-16 flex items-center pt-0.5 cursor-pointer font-body-md transition-colors`}
+          >
+            Telemetry
+          </button>
+          <button 
+            onClick={() => setSidebarTab('chromadb')}
+            className={`${sidebarTab === 'chromadb' ? 'text-primary font-bold border-b-2 border-primary' : 'text-text-muted hover:text-primary'} h-16 flex items-center pt-0.5 cursor-pointer font-body-md transition-colors`}
+          >
+            ChromaDB
+          </button>
         </nav>
 
         <div className="flex items-center gap-4">
@@ -287,8 +368,8 @@ export default function App() {
               )}
             </button>
             <button className="hover:text-primary transition-colors"><span className="material-symbols-outlined">settings</span></button>
-            <div className="w-8 h-8 rounded-none bg-surface-container border border-border-muted overflow-hidden ml-2 cursor-pointer">
-              <img alt="User profile" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAsbZzbzB7mpuK1W1Qd94Vxyag08k6f0xUsoMD-89gIVBmw6puT35mosNdCvt4nz55nCHr7kEBSeqJZmUssDnLAtdHVd_O_8ibv8rqGeTPjaRnD7NDeoXv9Kwa3XO7s0wweDVqGepftF1CPvqamY4j68ypEHw9qU9iRDuSwqqYd8Vf4FCiR00c0BDpiYofr1ZF9EOZtZioCaPmIdKswvEt1OiSxq0E_qgqmxqWvUkLoK8aObiSNIdnD"/>
+            <div className="w-8 h-8 rounded-none bg-surface-container border border-border-muted overflow-hidden ml-2 cursor-pointer flex items-center justify-center text-text-muted hover:text-primary transition-colors" title="Operator Profile">
+              <span className="material-symbols-outlined text-[18px]">account_circle</span>
             </div>
           </div>
         </div>
@@ -342,18 +423,43 @@ export default function App() {
             )}
           </div>
           <nav className="flex-1 py-4 flex flex-col">
-            <button className="flex items-center gap-4 text-text-muted px-4 py-3 hover:bg-surface-container hover:text-primary transition-all duration-150 ease-in-out font-body-sm text-body-sm w-full text-left">
+            <button 
+              onClick={() => setSidebarTab('workstation')}
+              className={`flex items-center gap-4 px-4 py-3 transition-all duration-150 ease-in-out font-body-sm text-body-sm w-full text-left ${
+                sidebarTab === 'workstation'
+                  ? 'bg-surface-container-highest text-primary font-bold border-l-2 border-primary'
+                  : 'text-text-muted hover:bg-surface-container hover:text-primary'
+              }`}
+            >
               <span className="material-symbols-outlined">terminal</span> Workstation
             </button>
-            <button className="flex items-center gap-4 bg-surface-container-highest text-primary font-bold border-l-2 border-primary px-4 py-3 transition-all duration-150 ease-in-out font-body-sm text-body-sm w-full text-left">
-              <span className="material-symbols-outlined" style={{fontVariationSettings: "'FILL' 1"}}>account_tree</span> Executions
+            <button 
+              onClick={() => setSidebarTab('executions')}
+              className={`flex items-center gap-4 px-4 py-3 transition-all duration-150 ease-in-out font-body-sm text-body-sm w-full text-left ${
+                sidebarTab === 'executions'
+                  ? 'bg-surface-container-highest text-primary font-bold border-l-2 border-primary'
+                  : 'text-text-muted hover:bg-surface-container hover:text-primary'
+              }`}
+            >
+              <span className="material-symbols-outlined" style={{fontVariationSettings: sidebarTab === 'executions' ? "'FILL' 1" : undefined}}>account_tree</span> Executions
             </button>
-            <button className="flex items-center gap-4 text-text-muted px-4 py-3 hover:bg-surface-container hover:text-primary transition-all duration-150 ease-in-out font-body-sm text-body-sm w-full text-left">
+            <button 
+              onClick={() => setSidebarTab('telemetry')}
+              className={`flex items-center gap-4 px-4 py-3 transition-all duration-150 ease-in-out font-body-sm text-body-sm w-full text-left ${
+                sidebarTab === 'telemetry'
+                  ? 'bg-surface-container-highest text-primary font-bold border-l-2 border-primary'
+                  : 'text-text-muted hover:bg-surface-container hover:text-primary'
+              }`}
+            >
               <span className="material-symbols-outlined">analytics</span> Telemetry
             </button>
             <button 
-              onClick={() => setIsHistoricalFixDrawerOpen(true)}
-              className="flex items-center gap-4 text-text-muted px-4 py-3 hover:bg-surface-container hover:text-primary transition-all duration-150 ease-in-out font-body-sm text-body-sm w-full text-left"
+              onClick={() => setSidebarTab('chromadb')}
+              className={`flex items-center gap-4 px-4 py-3 transition-all duration-150 ease-in-out font-body-sm text-body-sm w-full text-left ${
+                sidebarTab === 'chromadb'
+                  ? 'bg-surface-container-highest text-primary font-bold border-l-2 border-primary'
+                  : 'text-text-muted hover:bg-surface-container hover:text-primary'
+              }`}
             >
               <span className="material-symbols-outlined">database</span> ChromaDB Memory
             </button>
@@ -363,6 +469,33 @@ export default function App() {
         {/* Main Canvas */}
         <main className="flex-1 xl:ml-60 h-full overflow-y-auto bg-background p-margin-mobile md:p-margin-desktop relative">
           <div className="max-w-7xl mx-auto space-y-8 pb-20">
+            {sidebarTab === 'workstation' && (
+              <WorkstationView
+                activeSession={activeSession}
+                sessionDetails={sessionDetails}
+                streamState={streamState}
+                onTriggerRun={() => setIsNewRunModalOpen(true)}
+              />
+            )}
+
+            {sidebarTab === 'telemetry' && (
+              <TelemetryView
+                sessionDetails={sessionDetails}
+                streamState={streamState}
+                health={health}
+              />
+            )}
+
+            {sidebarTab === 'chromadb' && (
+              <ChromaDBView
+                onInjectHeuristic={(heuristic) => {
+                  setRetryGuidance(`Consider historical fix pattern: ${heuristic}`);
+                }}
+              />
+            )}
+
+            {sidebarTab === 'executions' && (
+              <>
             {/* Header Section */}
             <div>
               <div className="flex items-center gap-2 text-text-muted font-label-caps text-label-caps mb-2">
@@ -428,10 +561,12 @@ export default function App() {
                           </div>
                           <div>
                             <div className="font-headline-md text-headline-md font-bold text-amber-400">
-                              STATUS: UNVERIFIED • DOCKER SANDBOX UNAVAILABLE
+                              STATUS: UNVERIFIED • {health?.docker_mode === 'live' ? 'SANDBOX VERIFICATION INCOMPLETE' : 'DOCKER SANDBOX UNAVAILABLE'}
                             </div>
                             <div className="font-body-sm text-body-sm text-text-muted mt-1">
-                              Verification was skipped because the Docker daemon is unreachable. Fix candidate generated but unverified.
+                              {health?.docker_mode === 'live'
+                                ? 'Sandbox execution could not verify the fix candidate. Fix candidate generated but unverified.'
+                                : 'Verification was skipped because the Docker daemon is unreachable. Fix candidate generated but unverified.'}
                             </div>
                           </div>
                         </>
@@ -713,6 +848,8 @@ export default function App() {
                 </div>
               </>
             )}
+            </>
+            )}
           </div>
         </main>
       </div>
@@ -728,16 +865,33 @@ export default function App() {
             </h2>
             <form onSubmit={handleNewRun}>
               <div className="mb-4">
-                <label className="block font-label-caps text-text-muted mb-2">GITHUB ISSUE OR PR URL</label>
+                <label className="block font-label-caps text-text-muted mb-2">TARGET GITHUB REPOSITORY OR ISSUE</label>
                 <input 
                   type="text" 
                   autoFocus
                   required
                   value={newRunUrl}
                   onChange={(e) => setNewRunUrl(e.target.value)}
-                  placeholder="https://github.com/pallets/flask/issues/1084"
-                  className="w-full bg-surface-container border border-border-muted text-on-surface p-3 font-code-sm focus:border-primary focus:outline-none"
+                  placeholder="https://github.com/pallets/flask or pallets/flask#5012"
+                  className="w-full bg-surface-container border border-border-muted text-on-surface p-3 font-code-sm focus:border-primary focus:outline-none mb-2"
                 />
+                <div className="flex flex-wrap items-center gap-2 text-xs mt-2">
+                  <span className="text-text-muted font-label-caps text-[10px]">PRESETS:</span>
+                  <button 
+                    type="button" 
+                    onClick={() => setNewRunUrl("https://github.com/pallets/flask/pull/5012")}
+                    className="border border-border-muted px-2 py-1 text-text-muted hover:text-primary hover:border-primary font-code-sm transition-colors"
+                  >
+                    pallets/flask#5012
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setNewRunUrl("https://github.com/pallets/flask")}
+                    className="border border-border-muted px-2 py-1 text-text-muted hover:text-primary hover:border-primary font-code-sm transition-colors"
+                  >
+                    pallets/flask
+                  </button>
+                </div>
               </div>
               <div className="flex justify-end gap-4 mt-6">
                 <button type="button" onClick={() => setIsNewRunModalOpen(false)} className="px-4 py-2 text-text-muted hover:text-primary">Cancel</button>

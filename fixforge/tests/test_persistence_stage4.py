@@ -129,6 +129,7 @@ async def test_gate_stage4_persistence_matching():
         # A. ReviewSession
         res = await db.execute(select(ReviewSession).where(ReviewSession.id == session_id))
         db_sess = res.scalars().first()
+        assert db_sess is not None
 
         # B. AgentAttempt rows
         res = await db.execute(select(AgentAttempt).where(AgentAttempt.session_id == session_id).order_by(AgentAttempt.attempt_number))
@@ -137,10 +138,12 @@ async def test_gate_stage4_persistence_matching():
         # C. DiagnosisRecord
         res = await db.execute(select(DiagnosisRecord).where(DiagnosisRecord.session_id == session_id))
         db_diag = res.scalars().first()
+        assert db_diag is not None
 
         # D. ConfidenceMetric
         res = await db.execute(select(ConfidenceMetric).where(ConfidenceMetric.session_id == session_id))
         db_metric = res.scalars().first()
+        assert db_metric is not None
 
         # ---------------------------------------------------------------------
         # 2. CALL API GET /api/sessions/{session_id}
@@ -185,17 +188,20 @@ async def test_gate_stage4_persistence_matching():
     api_copy = dict(api_json)
     api_copy["created_at"] = str(api_copy["created_at"])
     api_copy["updated_at"] = str(api_copy["updated_at"])
-    for att in api_copy.get("attempts", []):
-        att["created_at"] = str(att["created_at"])
+    attempts_list = api_copy.get("attempts")
+    if isinstance(attempts_list, list):
+        for att in attempts_list:
+            if isinstance(att, dict) and "created_at" in att:
+                att["created_at"] = str(att["created_at"])
     print(json.dumps(api_copy, indent=2))
 
     # -------------------------------------------------------------------------
     # 3. VERIFY ROWS AND API RESPONSE MATCH EXACTLY
     # -------------------------------------------------------------------------
     assert str(db_sess.id) == api_json["id"]
-    assert db_sess.status == api_json["status"]
-    assert db_sess.repo_url == api_json["repository"]
-    assert db_sess.branch == api_json["branch"]
+    assert str(db_sess.status) == api_json["status"]
+    assert str(db_sess.repo_url) == api_json["repository"]
+    assert str(db_sess.branch) == api_json["branch"]
 
     # Diagnosis matches
     assert db_diag is not None
@@ -270,15 +276,18 @@ async def test_gate_stage4_failure_case_persists_readable_error():
     async with AsyncSessionLocal() as db:
         res = await db.execute(select(ReviewSession).where(ReviewSession.id == session_id))
         db_sess = res.scalars().first()
+        assert db_sess is not None
 
         res = await db.execute(select(AgentAttempt).where(AgentAttempt.session_id == session_id))
         db_attempts = res.scalars().all()
 
         res = await db.execute(select(DiagnosisRecord).where(DiagnosisRecord.session_id == session_id))
         db_diag = res.scalars().first()
+        assert db_diag is not None
 
         res = await db.execute(select(ConfidenceMetric).where(ConfidenceMetric.session_id == session_id))
         db_metric = res.scalars().first()
+        assert db_metric is not None
 
         api_json = await get_session(str(session_id), db)
 
@@ -288,18 +297,19 @@ async def test_gate_stage4_failure_case_persists_readable_error():
     print(f"  Diagnosis Diff Trees:     {db_diag.diff_trees}")
     print(f"  Metrics Overall Score:    {db_metric.overall_score}")
 
-    assert db_sess.status == "failed"
+    assert str(db_sess.status) == "failed"
     assert api_json["status"] == "failed"
 
     # Readable error preserved in attempt test logs
     assert len(db_attempts) == 1
-    assert "Workflow failure: Docker daemon connection abruptly terminated" in db_attempts[0].test_logs
+    assert "Workflow failure: Docker daemon connection abruptly terminated" in str(db_attempts[0].test_logs)
     assert db_attempts[0].test_logs == api_json["attempts"][0]["test_logs"]
 
     # Readable error preserved in diagnosis diff_trees
-    assert "Docker daemon connection abruptly terminated" in db_diag.diff_trees["error"]
+    assert isinstance(db_diag.diff_trees, dict)
+    assert "Docker daemon connection abruptly terminated" in str(db_diag.diff_trees.get("error", ""))
     assert db_diag.diff_trees == api_json["diagnosis"]["diff_trees"]
 
     # Confidence metric is 0.0
-    assert db_metric.overall_score == 0.0
+    assert getattr(db_metric, "overall_score") == 0.0
     assert api_json["metrics"]["overall_score"] == 0.0

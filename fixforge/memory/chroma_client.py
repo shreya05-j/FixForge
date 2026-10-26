@@ -26,12 +26,16 @@ class ChromaManager:
                 n_results=actual_n
             )
             # Flatten results
-            if not results.get('documents') or not results['documents'][0]:
+            docs_list = results.get('documents')
+            if not docs_list or not docs_list[0]:
                 return []
+            docs = docs_list[0]
             out = []
-            distances = results.get('distances', [[]])[0] if results.get('distances') else []
-            metadatas = results.get('metadatas', [[]])[0] if results.get('metadatas') else []
-            for i, (doc, meta) in enumerate(zip(results['documents'][0], metadatas)):
+            distances_list = results.get('distances')
+            distances = distances_list[0] if (distances_list is not None and len(distances_list) > 0 and distances_list[0] is not None) else []
+            metadatas_list = results.get('metadatas')
+            metadatas = metadatas_list[0] if (metadatas_list is not None and len(metadatas_list) > 0 and metadatas_list[0] is not None) else []
+            for i, (doc, meta) in enumerate(zip(docs, metadatas)):
                 dist = distances[i] if i < len(distances) else None
                 out.append({"document": doc, "metadata": meta, "distance": dist})
             return out

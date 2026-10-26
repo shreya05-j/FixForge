@@ -34,9 +34,9 @@ def compute_resolution_status(
     - failed: test verification failed
     """
     if docker_status is not None or agent_sources is not None:
-        d_status = str(docker_status or "").lower()
+        d_status = (docker_status or "").lower()
         t_passed = bool(test_passed)
-        sources = [str(s).lower() for s in (agent_sources or [])]
+        sources = [s.lower() for s in (agent_sources or [])]
         all_llm = bool(sources and all(s == "llm" for s in sources))
         
         is_resolved = (d_status == "passed" and t_passed and all_llm)
