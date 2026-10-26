@@ -99,7 +99,7 @@ async def _call_fixer_structured(prompt: str, temperature: float, agent_name: st
         temperature=temperature,
         timeout_sec=60.0,
         client=async_llm_client,
-        max_tokens=1500,
+        max_tokens=4096,
     )
     diff = resp.candidate_diff if resp else ""
     return diff, telemetry

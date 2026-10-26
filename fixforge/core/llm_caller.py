@@ -91,9 +91,9 @@ async def call_structured_llm(
     messages: list,
     temperature: float = 0.0,
     max_retries: int = 3,
-    timeout_sec: float = 30.0,
+    timeout_sec: float = 45.0,
     client: Optional[Any] = None,
-    max_tokens: int = 1500,
+    max_tokens: int = 4096,
 ) -> Tuple[Optional[T], Dict[str, Any]]:
     """
     Standardized live LLM invocation wrapper.
@@ -104,7 +104,7 @@ async def call_structured_llm(
     target_client = client if client is not None else async_llm_client
     model_name = getattr(settings, "FIXFORGE_MODEL", "claude-haiku-5-5")
     backoff = 1.0
-
+    current_max_tokens = max_tokens
 
     # 1. Deterministic unit testing support: if chat.completions.create is mocked
     active_client = target_client
@@ -152,7 +152,7 @@ async def call_structured_llm(
                     response_model=response_model,
                     temperature=temperature,
                     messages=messages,
-                    max_tokens=max_tokens,
+                    max_tokens=current_max_tokens,
                 ),
                 timeout=timeout_sec,
             )
@@ -203,6 +203,33 @@ async def call_structured_llm(
                 await asyncio.sleep(backoff)
                 backoff *= 2.0
                 continue
+
+            # Special handling for IncompleteOutputException (model hit token limit)
+            if "IncompleteOutputException" in type(exc).__name__ or "max_tokens length limit" in exc_str:
+                last_comp = getattr(exc, "last_completion", None)
+                if last_comp is not None:
+                    recovered = _extract_diff_from_failed_generation(str(last_comp), response_model)
+                    if recovered is not None:
+                        logger.info(
+                            "[%s] Recovered diff from IncompleteOutputException (attempt %d/%d, %.3fs)",
+                            agent_name, attempt + 1, max_retries, latency
+                        )
+                        telemetry = {
+                            "source": "llm",
+                            "model": model_name,
+                            "latency_sec": latency,
+                            "prompt_tokens": 0,
+                            "completion_tokens": current_max_tokens,
+                            "total_tokens": current_max_tokens,
+                        }
+                        return recovered, telemetry
+                current_max_tokens = min(current_max_tokens * 2, 8192)
+                logger.warning(
+                    "[%s] IncompleteOutputException: increasing max_tokens to %d for attempt %d/%d",
+                    agent_name, current_max_tokens, attempt + 2, max_retries
+                )
+                continue
+
             # Special handling for json_validate_failed (model hit token limit mid-JSON)
             if "json_validate_failed" in exc_str:
                 recovered = _extract_diff_from_failed_generation(exc_str, response_model)
