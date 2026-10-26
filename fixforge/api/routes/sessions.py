@@ -1,10 +1,13 @@
+# pyright: reportAttributeAccessIssue=false, reportGeneralTypeIssues=false, reportArgumentType=false, reportTypedDictNotRequiredAccess=false, reportIndexIssue=false, reportOperatorIssue=false
 import uuid
+import os
 import re
 import time
 import asyncio
 import logging
+import httpx
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -28,14 +31,42 @@ GITHUB_SHORT_PATTERN = re.compile(
     r"^(?P<owner>[a-zA-Z0-9_.-]+)/(?P<repo>[a-zA-Z0-9_.-]+)(?:#(?P<number>\d+))?$"
 )
 
+
 def parse_github_target(raw_url: str) -> Optional[dict]:
     trimmed = raw_url.strip()
+
+    # Extract URL fragment e.g. #breadth_first_search
+    fragment = ""
+    if "#" in trimmed:
+        trimmed, fragment = trimmed.split("#", 1)
+        fragment = fragment.strip()
+
+    target_file = None
+    target_hint = fragment if fragment else None
+
+    # Check for /blob/<branch>/<filepath> or /tree/<branch>/<filepath>
+    blob_match = re.search(r"/(?:blob|tree)/[^/]+/(.+)$", trimmed)
+    if blob_match:
+        target_file = blob_match.group(1).split("?")[0]
+        trimmed = re.sub(r"/(?:blob|tree)/.*$", "", trimmed)
+        if not target_hint:
+            target_hint = os.path.splitext(os.path.basename(target_file))[0]
+
+    # Check for query parameters e.g. ?target=... or ?file=...
+    if "?" in trimmed:
+        query_part = trimmed.split("?", 1)[1]
+        m_q = re.search(r"(?:target|file|hint)=([^&]+)", query_part)
+        if m_q and not target_hint:
+            target_hint = m_q.group(1)
+        trimmed = trimmed.split("?", 1)[0]
+
     m = GITHUB_URL_PATTERN.match(trimmed)
     if m:
         owner = m.group("owner")
         repo = m.group("repo").removesuffix(".git")
         itype = m.group("type")
         num = m.group("number")
+        is_explicit_issue = bool(itype and num)
         if not itype or not num:
             itype = "issue"
             num = "1"
@@ -46,10 +77,13 @@ def parse_github_target(raw_url: str) -> Optional[dict]:
             "repo": repo,
             "type": itype,
             "number": num,
+            "is_explicit_issue": is_explicit_issue,
             "repo_url": f"https://github.com/{owner}/{repo}",
-            "canonical_url": f"https://github.com/{owner}/{repo}/{itype}/{num}" if m.group("type") else f"https://github.com/{owner}/{repo}"
+            "canonical_url": f"https://github.com/{owner}/{repo}/{itype}/{num}" if is_explicit_issue else f"https://github.com/{owner}/{repo}",
+            "target_hint": target_hint,
+            "target_file": target_file,
         }
-    
+
     m_short = GITHUB_SHORT_PATTERN.match(trimmed)
     if m_short:
         owner = m_short.group("owner")
@@ -60,13 +94,44 @@ def parse_github_target(raw_url: str) -> Optional[dict]:
             "repo": repo,
             "type": "issue",
             "number": num,
+            "is_explicit_issue": bool(m_short.group("number")),
             "repo_url": f"https://github.com/{owner}/{repo}",
-            "canonical_url": f"https://github.com/{owner}/{repo}"
+            "canonical_url": f"https://github.com/{owner}/{repo}",
+            "target_hint": target_hint,
+            "target_file": target_file,
         }
     return None
 
+
+async def fetch_github_issue(owner: str, repo: str, number: str) -> Optional[Dict[str, str]]:
+    """Attempts to fetch real issue title and description from public GitHub REST API."""
+    url = f"https://api.github.com/repos/{owner}/{repo}/issues/{number}"
+    headers = {
+        "User-Agent": "FixForge-AI-Agent",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    if getattr(settings, "GITHUB_TOKEN", None):
+        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                return {
+                    "title": data.get("title") or f"Issue #{number}",
+                    "body": data.get("body") or f"Automated repair initiated for #{number}"
+                }
+    except Exception as exc:
+        logger.debug(f"Could not fetch GitHub issue #{number} for {owner}/{repo}: {exc}")
+    return None
+
+
 class StartSessionRequest(BaseModel):
     url: str = Field(..., description="Target GitHub issue, pull request, or repository URL")
+    issue_title: Optional[str] = Field(None, description="Optional custom issue title or bug summary")
+    issue_body: Optional[str] = Field(None, description="Optional custom issue description or failure logs")
+    target_file: Optional[str] = Field(None, description="Optional target file path or bug name")
+
 
     @field_validator("url")
     @classmethod
@@ -640,15 +705,38 @@ async def start_session(
         logger.exception(f"Database write failed while creating session: {db_err}")
         raise HTTPException(status_code=500, detail="Database write failure while initializing session")
 
+    target_hint = parsed.get("target_hint")
+    target_file = payload.target_file or parsed.get("target_file")
+    if not target_hint and target_file:
+        target_hint = os.path.splitext(os.path.basename(target_file))[0]
+
+    issue_title = payload.issue_title
+    issue_body = payload.issue_body
+
+    if not issue_title or not issue_body:
+        if parsed.get("is_explicit_issue"):
+            fetched = await fetch_github_issue(owner, repo, issue_number)
+            if fetched:
+                issue_title = issue_title or fetched.get("title")
+                issue_body = issue_body or fetched.get("body")
+        elif target_hint:
+            issue_title = issue_title or f"Repair defect in {target_hint}"
+            issue_body = issue_body or f"Analyze and repair defect in {target_hint}. Verify fix with test suite."
+
+    issue_title = issue_title or f"{issue_type.capitalize()} #{issue_number}"
+    issue_body = issue_body or f"Automated repair initiated for {payload.url}"
+
     initial_state: AgentState = {
         "repo_name": repo_name,
         "repo_url": target_repo_url,
         "branch": "main",
         "issue_id": issue_number,
-        "issue_title": f"{issue_type.capitalize()} #{issue_number}",
-        "issue_body": f"Automated repair initiated for {payload.url}",
+        "issue_title": issue_title,
+        "issue_body": issue_body,
+        "target_file": target_file,
+        "target_hint": target_hint,
         "stack_trace": None,
-        "target_files": [],
+        "target_files": [target_file] if target_file else [],
         "plan": "",
         "retrieved_ast_context": {},
         "historical_fix_context": [],
@@ -697,6 +785,8 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
         "branch": session.branch,
         "llm_mode": getattr(session, "llm_mode", "fallback"),
         "docker_mode": getattr(session, "docker_mode", "unavailable"),
+        "confidence_score": session.metrics.overall_score if session.metrics else 0.0,
+        "patch_diff": sorted(session.attempts, key=lambda a: a.attempt_number)[-1].patch_diff if session.attempts else None,
         "diagnosis": {
             "failure_classification": session.diagnosis.failure_classification,
             "severity_rating": session.diagnosis.severity_rating,

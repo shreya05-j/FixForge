@@ -23,12 +23,12 @@ _SYSTEM_PROMPT = (
     "You are a precise software engineer producing MINIMAL bug fixes.\n"
     "Rules:\n"
     "1. Output ONLY a valid git unified diff in the candidate_diff field.\n"
-    "2. The diff MUST start with '--- a/<filepath>' and '+++ b/<filepath>'.\n"
-    "3. MINIMAL CHANGE ONLY: change the fewest lines possible to fix the bug. "
+    "2. The diff MUST start with '--- a/<filepath>' and '+++ b/<filepath>' matching the target file path provided.\n"
+    "3. MINIMAL CHANGE ONLY: change the fewest lines possible (typically 1 to 5 lines). "
     "Do NOT refactor, add features, or rewrite unrelated code.\n"
-    "4. Maximum 25 lines changed across all hunks. If you need more, you have misunderstood the bug.\n"
-    "5. Each @@ hunk header must be correct and match real line numbers.\n"
-    "6. Never output explanations, only the diff."
+    "4. Copy context lines VERBATIM character-by-character from the provided code snippet including exact indentation.\n"
+    "5. Keep hunks minimal: 2-3 lines of unchanged context above and below the change.\n"
+    "6. Never output conversational explanations, only the unified diff."
 )
 
 
@@ -48,9 +48,9 @@ def _build_fixer_prompt(state: AgentState) -> str:
     if test_results:
         if test_results.get("status") == "patch_failed":
             failure_feedback = (
-                f"\n[CRITICAL FAILURE] Previous patch rejected by git apply --check:\n"
+                f"\n[CRITICAL FAILURE] Previous patch rejected by git apply:\n"
                 f"{test_results.get('error') or test_results.get('stderr')}\n"
-                "Ensure file paths and hunk headers match the repository exactly."
+                "Ensure file paths and context lines match the provided target code exactly."
             )
         elif not test_results.get("passed", False):
             failure_feedback = (
@@ -58,15 +58,28 @@ def _build_fixer_prompt(state: AgentState) -> str:
                 f"{test_results.get('stdout') or test_results.get('stderr')}"
             )
 
-    ast_ctx = str(state.get('retrieved_ast_context', ''))[:2500]
-    test_res = str(test_results)[:1000]
+    ast_raw = state.get('retrieved_ast_context') or {}
+    code_snippets = []
+    if isinstance(ast_raw, dict):
+        for fn in ast_raw.get("functions", []):
+            code_snippets.append(
+                f"=== Target File: {fn.get('file', 'unknown')} (Function: {fn.get('name')}) ===\n"
+                f"```python\n{fn.get('code', '')}\n```"
+            )
+        for cls in ast_raw.get("classes", []):
+            code_snippets.append(
+                f"=== Target File: {cls.get('file', 'unknown')} (Class: {cls.get('name')}) ===\n"
+                f"```python\n{cls.get('code', '')}\n```"
+            )
+    formatted_code = "\n\n".join(code_snippets) if code_snippets else str(ast_raw)[:3000]
+
     return (
-        f"Diagnosis: {state.get('diagnosis_summary')}\n"
-        f"Context: {ast_ctx}\n"
-        f"Previous test results: {test_res}"
+        f"Diagnosis: {state.get('diagnosis_summary')}\n\n"
+        f"Source Code Context:\n{formatted_code}\n"
         f"{failure_feedback}\n"
         "Generate a valid git unified diff to fix the issue."
     )
+
 
 
 async def _call_fixer_structured(prompt: str, temperature: float, agent_name: str = "Fixer") -> Tuple[str, Dict[str, Any]]:

@@ -1,4 +1,4 @@
-﻿"""
+"""
 retriever.py - ForgeRetriever agent.
 
 Reads real source files from the cloned repository checkout. Calls
@@ -11,6 +11,7 @@ No placeholder AST data is ever returned in the live path.
 
 import logging
 import os
+import re
 from typing import Dict, Any
 
 from core.state import AgentState
@@ -72,24 +73,42 @@ async def run_retriever(state: AgentState) -> Dict[str, Any]:
             "status": "retriever_completed",
         }
 
+    # Check explicit target_file or target_hint from state
+    explicit_target = state.get("target_file")
+    target_hint = state.get("target_hint")
+    if not target_hint and state.get("issue_title"):
+        # Check if issue title mentions a specific python module/function
+        m_hint = re.search(r'\b([a-zA-Z0-9_]{4,})\b', str(state.get("issue_title", "")))
+        if m_hint and m_hint.group(1).lower() not in ("issue", "pull", "repair", "defect", "fail", "fixed", "check"):
+            target_hint = m_hint.group(1)
+
     # Resolve target_files relative to the checkout root.
     resolved_files = []
+    
+    if explicit_target:
+        candidate = explicit_target if os.path.isabs(explicit_target) else os.path.join(checkout_path, explicit_target)
+        if os.path.isfile(candidate):
+            resolved_files.append(candidate)
+        else:
+            logger.warning(f"Explicit target_file not found: {explicit_target} -> {candidate}")
+
     if target_files:
         for tf in target_files:
             candidate = tf if os.path.isabs(tf) else os.path.join(checkout_path, tf)
-            if os.path.isfile(candidate):
+            if os.path.isfile(candidate) and candidate not in resolved_files:
                 resolved_files.append(candidate)
             else:
                 logger.warning(f"Planner-specified file not found: {tf} -> {candidate}")
 
     if not resolved_files:
-        # Fallback: scan the whole repo for Python files.
+        # Fallback: scan the whole repo for Python files prioritizing hints and primary dirs.
         logger.info(
             "target_files is empty or none found in checkout. "
-            "Falling back to keyword scan of all Python files."
+            f"Falling back to prioritized scan with hint='{target_hint}'."
         )
-        resolved_files = find_python_files(checkout_path, max_files=50)
+        resolved_files = find_python_files(checkout_path, max_files=50, hint=target_hint)
         fallback_used = True
+
 
     if not resolved_files:
         logger.warning("No Python files found in checkout. AST context will be empty.")

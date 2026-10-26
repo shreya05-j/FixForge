@@ -10,6 +10,8 @@ class AgentState(TypedDict, total=False):
     issue_body: str
     stack_trace: Optional[str]
     target_files: List[str]
+    target_file: Optional[str]
+    target_hint: Optional[str]
     plan: str
     retrieved_ast_context: Dict[str, Any]
     historical_fix_context: List[Dict[str, Any]]

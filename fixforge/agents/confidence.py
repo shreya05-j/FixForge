@@ -135,27 +135,60 @@ def compute_static_analysis_score(
     if not post_code:
         return None
 
+    # 1. If repo_path is provided and target file exists, check full patched file directly
+    if repo_path and os.path.isdir(repo_path):
+        m_file = re.search(r'^\+\+\+ [b/]*(.*?)$', candidate_diff, re.MULTILINE)
+        if m_file:
+            rel = m_file.group(1).strip()
+            if rel.startswith(('a/', 'b/')):
+                rel = rel[2:]
+            rel = rel.lstrip('/')
+            full_target = os.path.join(repo_path, rel)
+            if not os.path.exists(full_target):
+                base = os.path.basename(rel)
+                for root, _, files in os.walk(repo_path):
+                    if base in files:
+                        full_target = os.path.join(root, base)
+                        break
+            if os.path.isfile(full_target):
+                try:
+                    with open(full_target, "r", encoding="utf-8", errors="replace") as f:
+                        file_code = f.read()
+                    issues, syn_err = _count_pyflakes_issues(file_code)
+                    if not syn_err:
+                        return 1.0 if issues == 0 else round(max(0.0, 1.0 - (0.10 * issues)), 4)
+                except Exception:
+                    pass
+
+    # 2. Fallback: evaluate code hunk directly
+    def _evaluate_code_issues(code: str) -> Tuple[int, bool]:
+        issues, syn_err = _count_pyflakes_issues(code)
+        if not syn_err:
+            return issues, False
+        
+        # Check if fragment needs a wrapper function and closure of trailing block
+        lns = code.splitlines()
+        if lns and lns[-1].strip().endswith(":"):
+            lns.append("                pass")
+        wrapped = "def _wrapper():\n" + "\n".join("    " + ln for ln in lns)
+        return _count_pyflakes_issues(wrapped)
+
     # Check for syntax error in post-patch code
-    post_issues, post_syntax_err = _count_pyflakes_issues(post_code)
+    post_issues, post_syntax_err = _evaluate_code_issues(post_code)
     if post_syntax_err:
-        # Check if fragment needs a wrapper function
-        wrapped = "def _wrapper():\n" + "\n".join("    " + ln for ln in post_code.split("\n"))
-        post_issues, post_syntax_err = _count_pyflakes_issues(wrapped)
-        if post_syntax_err:
-            return 0.0
+        return 0.0
 
     # Count pre-patch issues
     pre_issues = 0
     if pre_code:
-        pre_issues, pre_syntax_err = _count_pyflakes_issues(pre_code)
-        if pre_syntax_err:
-            wrapped_pre = "def _wrapper():\n" + "\n".join("    " + ln for ln in pre_code.split("\n"))
-            pre_issues, _ = _count_pyflakes_issues(wrapped_pre)
+        pre_issues, _ = _evaluate_code_issues(pre_code)
 
     new_issues = max(0, post_issues - pre_issues)
     if new_issues == 0:
         return 1.0
     return round(max(0.0, 1.0 - (0.20 * new_issues)), 4)
+
+
 
 
 def compute_context_similarity_score(historical_fixes: Optional[List[Dict[str, Any]]]) -> Optional[float]:

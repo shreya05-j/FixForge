@@ -14,7 +14,7 @@ import os
 import re
 import subprocess
 import tempfile
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -116,22 +116,64 @@ def checkout_repo(
     return {"path": checkout_path, "tmpdir": tmpdir, "status": "ok", "error": ""}
 
 
-def find_python_files(root: str, max_files: int = 50) -> list:
+def find_python_files(root: str, max_files: int = 50, hint: Optional[str] = None) -> list:
     """
     Walk *root* and return absolute paths of Python files (up to max_files).
     Used as keyword-search fallback when Planner target_files is empty.
+    
+    Prioritizes:
+    - Files matching *hint* if provided (e.g. specific algorithm or issue name)
+    - Primary source directories (src, lib, python_programs, app, core)
+    - Excludes reference/solution directories (correct_*, solutions_*) to prevent analyzing ground-truth references.
     """
-    py_files = []
+    excluded_dirs = {
+        "__pycache__", ".git", "node_modules", ".venv", "venv", "dist", "build",
+        "correct_python_programs", "correct_java_programs", "correct_programs",
+        "reference_solutions", "solutions_correct", "json_testcases", "java_testcases"
+    }
+
+    primary_dirs = ("src", "lib", "python_programs", "app", "core", "pkg")
+    
+    hint_matches = []
+    source_matches = []
+    other_matches = []
+    
+    hint_lower = hint.lower().strip() if hint else None
+
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [
             d for d in dirnames
-            if not d.startswith(".") and d not in (
-                "__pycache__", ".git", "node_modules", ".venv", "venv", "dist", "build"
-            )
+            if not d.startswith(".") and d.lower() not in excluded_dirs
         ]
+        
+        # Sort subdirectories so primary source directories are visited first
+        dirnames.sort(key=lambda d: 0 if any(p in d.lower() for p in primary_dirs) else 1)
+
+        rel_dir = os.path.relpath(dirpath, root).lower()
+        is_primary = any(p in rel_dir for p in primary_dirs)
+
         for fname in filenames:
             if fname.endswith(".py"):
-                py_files.append(os.path.join(dirpath, fname))
-                if len(py_files) >= max_files:
-                    return py_files
-    return py_files
+                full_path = os.path.join(dirpath, fname)
+                fname_lower = fname.lower()
+                
+                if hint_lower and (hint_lower in fname_lower or fname_lower.replace(".py", "") in hint_lower):
+                    hint_matches.append(full_path)
+                elif is_primary:
+                    source_matches.append(full_path)
+                else:
+                    other_matches.append(full_path)
+
+    combined = hint_matches + source_matches + other_matches
+    # Deduplicate while preserving order
+    seen = set()
+    result = []
+    for f in combined:
+        if f not in seen:
+            seen.add(f)
+            result.append(f)
+        if len(result) >= max_files:
+            break
+            
+    return result
+

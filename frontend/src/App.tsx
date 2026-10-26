@@ -879,6 +879,20 @@ export default function App() {
                   <span className="text-text-muted font-label-caps text-[10px]">PRESETS:</span>
                   <button 
                     type="button" 
+                    onClick={() => setNewRunUrl("https://github.com/jkoppel/QuixBugs#breadth_first_search")}
+                    className="border border-border-muted px-2 py-1 text-text-muted hover:text-primary hover:border-primary font-code-sm transition-colors"
+                  >
+                    QuixBugs (BFS)
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setNewRunUrl("https://github.com/jkoppel/QuixBugs#bitcount")}
+                    className="border border-border-muted px-2 py-1 text-text-muted hover:text-primary hover:border-primary font-code-sm transition-colors"
+                  >
+                    QuixBugs (bitcount)
+                  </button>
+                  <button 
+                    type="button" 
                     onClick={() => setNewRunUrl("https://github.com/pallets/flask/pull/5012")}
                     className="border border-border-muted px-2 py-1 text-text-muted hover:text-primary hover:border-primary font-code-sm transition-colors"
                   >
@@ -892,6 +906,7 @@ export default function App() {
                     pallets/flask
                   </button>
                 </div>
+
               </div>
               <div className="flex justify-end gap-4 mt-6">
                 <button type="button" onClick={() => setIsNewRunModalOpen(false)} className="px-4 py-2 text-text-muted hover:text-primary">Cancel</button>
