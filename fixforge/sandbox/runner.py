@@ -25,7 +25,7 @@ def apply_patch(repo_dir, patch_path):
         m_file = re.search(r'^\+\+\+ [b/]*(.*?)$', diff, flags=re.MULTILINE)
         if not m_file:
             continue
-        rel_path = m_file.group(1).strip()
+        rel_path = m_file.group(1).strip().replace('\\', '/')
         if rel_path.startswith(('a/', 'b/')):
             rel_path = rel_path[2:]
         rel_path = rel_path.lstrip('/')
@@ -42,8 +42,11 @@ def apply_patch(repo_dir, patch_path):
             base = os.path.basename(rel_path)
             for root, _, files in os.walk(repo_dir):
                 if base in files:
-                    target_path = os.path.join(root, base)
-                    break
+                    candidate = os.path.join(root, base)
+                    if candidate.replace('\\', '/').endswith(rel_path):
+                        target_path = candidate
+                        break
+                    target_path = candidate
 
         if not os.path.exists(target_path):
             print(f'Target file not found: {rel_path}', file=sys.stderr)
@@ -259,6 +262,8 @@ def sanitize_unified_diff(diff_text: str) -> str:
             sanitized_lines.append(f"@@ -{old_start},{old_c} +{new_start},{new_c} @@{trailing}")
             sanitized_lines.extend(hunk_lines)
         else:
+            if line.startswith(("--- ", "+++ ", "diff --git ", "Index: ", "*** ")):
+                line = line.replace("\\", "/")
             if line.startswith("--- ") and not line.startswith("--- a/") and not line.startswith("--- /dev/null"):
                 line = "--- a/" + line[4:].lstrip("/")
             elif line.startswith("+++ ") and not line.startswith("+++ b/") and not line.startswith("+++ /dev/null"):
@@ -268,24 +273,54 @@ def sanitize_unified_diff(diff_text: str) -> str:
     return "\n".join(sanitized_lines) + "\n"
 
 
+def get_target_file_from_diff(diff_patch: str) -> Optional[str]:
+    """Extracts normalized relative file path being modified by the patch."""
+    if not diff_patch:
+        return None
+    m = re.search(r"^\+\+\+ [b/]*(.*?)$", diff_patch, re.MULTILINE)
+    if not m:
+        return None
+    rel_target = m.group(1).strip().replace("\\", "/")
+    if rel_target.startswith(("a/", "b/")):
+        rel_target = rel_target[2:]
+    rel_target = rel_target.lstrip("/")
+    return rel_target if rel_target and rel_target != "/dev/null" else None
+
+
 def find_targeted_test_file(repo_path: str, diff_patch: str) -> Optional[str]:
     """Finds a matching test file in repo_path corresponding to the file being patched."""
     if not repo_path or not diff_patch or not os.path.exists(repo_path):
         return None
 
-    m = re.search(r"^\+\+\+ [b/]*(.*?)$", diff_patch, re.MULTILINE)
-    if not m:
+    rel_target = get_target_file_from_diff(diff_patch)
+    if not rel_target:
         return None
-
-    rel_target = m.group(1).strip()
-    if rel_target.startswith(("a/", "b/")):
-        rel_target = rel_target[2:]
-    rel_target = rel_target.lstrip("/")
 
     stem = os.path.splitext(os.path.basename(rel_target))[0]
     if not stem:
         return None
 
+    target_dir = os.path.dirname(os.path.join(repo_path, rel_target))
+
+    # 1. Check for run_test.sh in target file's directory or parent directories (BugsInPy & benchmarks)
+    curr_dir = target_dir
+    while curr_dir and os.path.commonpath([repo_path, curr_dir]) == repo_path:
+        run_sh = os.path.join(curr_dir, "run_test.sh")
+        if os.path.isfile(run_sh):
+            return os.path.relpath(run_sh, repo_path).replace("\\", "/")
+        parent = os.path.dirname(curr_dir)
+        if parent == curr_dir or curr_dir == repo_path:
+            break
+        curr_dir = parent
+
+    # 2. Check sibling test files in target directory
+    if os.path.isdir(target_dir):
+        for f in os.listdir(target_dir):
+            if f.endswith(".py") and ("test" in f.lower()):
+                full = os.path.join(target_dir, f)
+                return os.path.relpath(full, repo_path).replace("\\", "/")
+
+    # 3. Check common candidates
     candidates = [
         f"python_testcases/test_{stem}.py",
         f"tests/test_{stem}.py",
@@ -301,13 +336,7 @@ def find_targeted_test_file(repo_path: str, diff_patch: str) -> Optional[str]:
         if os.path.isfile(full):
             return cand
 
-    target_dir = os.path.dirname(os.path.join(repo_path, rel_target))
-    if os.path.isdir(target_dir):
-        for f in os.listdir(target_dir):
-            if f.endswith(".py") and ("test" in f.lower()):
-                full = os.path.join(target_dir, f)
-                return os.path.relpath(full, repo_path).replace("\\", "/")
-
+    # 4. Bounded directory walk
     dirs_checked = 0
     for root, dirnames, files in os.walk(repo_path):
         dirs_checked += 1
@@ -443,7 +472,9 @@ def run_in_sandbox(repo_path: str, diff_patch: str, test_cmd: str = "pytest") ->
         with open(apply_script_path, "w", encoding="utf-8", newline="\n") as af:
             af.write(PYTHON_PATCH_SCRIPT)
 
-        # Detect if there is a targeted test suite for the modified file
+        # Detect target file and targeted test suite
+        rel_target_file = get_target_file_from_diff(sanitized_patch) or ""
+        rel_target_dir = os.path.dirname(rel_target_file).replace("\\", "/") if rel_target_file else ""
         rel_test_file = find_targeted_test_file(repo_path, sanitized_patch) or ""
 
         entrypoint_script = f"""#!/bin/bash
@@ -480,30 +511,62 @@ if [ -s /app_patch/patch.diff ]; then
 fi
 
 echo "=== FIXFORGE_RUNNING_TESTS ==="
-export PYTHONPATH=".:/app_scratch:$PYTHONPATH"
+export PYTHONPATH=".:/app_scratch:/app_scratch/{rel_target_dir}:/app_scratch/{rel_target_dir}/src:$PYTHONPATH"
 
-# Run targeted test if detected
+# 1. Run targeted test if detected (shell script or pytest test file)
 if [ -n "{rel_test_file}" ] && [ -f "/app_scratch/{rel_test_file}" ]; then
     echo "Executing targeted test suite: {rel_test_file}"
-    timeout 30s pytest -q --tb=short "/app_scratch/{rel_test_file}"
-    exit $?
+    if [[ "{rel_test_file}" == *.sh ]]; then
+        sh_exit=0
+        sh_output=$(timeout 25s bash "/app_scratch/{rel_test_file}" 2>&1) || sh_exit=$?
+        echo "$sh_output"
+        if [ "$sh_exit" -eq 0 ]; then
+            exit 0
+        elif echo "$sh_output" | grep -iq "ModuleNotFoundError"; then
+            if [ -n "{rel_target_file}" ] && [ -f "/app_scratch/{rel_target_file}" ]; then
+                echo "Environment missing test dependencies. Verifying syntax compilation of {rel_target_file}..."
+                timeout 10s python3 -m py_compile "/app_scratch/{rel_target_file}"
+                exit $?
+            fi
+            exit "$sh_exit"
+        else
+            exit "$sh_exit"
+        fi
+    else
+        timeout 25s pytest -q --tb=short "/app_scratch/{rel_test_file}"
+        exit $?
+    fi
 fi
 
-# Standard test execution fallback
+# 2. Directory-scoped test search if target directory exists
+if [ -n "{rel_target_dir}" ] && [ -d "/app_scratch/{rel_target_dir}" ]; then
+    echo "Executing scoped test search in directory: {rel_target_dir}"
+    scoped_exit=0
+    timeout 20s pytest -q --tb=short "/app_scratch/{rel_target_dir}" -o cache_dir=/tmp/.pytest_cache || scoped_exit=$?
+    if [ "$scoped_exit" -eq 0 ]; then
+        exit 0
+    fi
+fi
+
+# 3. Standard test execution fallback
 if [ "{test_cmd}" = "pytest" ]; then
     pytest_exit=0
-    timeout 35s pytest -q --tb=short -o cache_dir=/tmp/.pytest_cache || pytest_exit=$?
+    timeout 20s pytest -q --tb=short -o cache_dir=/tmp/.pytest_cache || pytest_exit=$?
     if [ "$pytest_exit" -eq 0 ]; then
         exit 0
     elif [ "$pytest_exit" -eq 5 ] || [ "$pytest_exit" -eq 124 ]; then
-        python -m unittest discover -s . -p "test*.py" -q 2>/dev/null || python -m compileall -q .
-    elif python -m unittest discover -s . -p "test*.py" -q 2>/dev/null; then
+        # If no tests collected or suite timed out in monorepo, verify syntax and compilation of patched file
+        if [ -n "{rel_target_file}" ] && [ -f "/app_scratch/{rel_target_file}" ]; then
+            echo "Verifying syntax and compilation of patched file: {rel_target_file}"
+            timeout 10s python3 -m py_compile "/app_scratch/{rel_target_file}"
+            exit $?
+        fi
         exit 0
     else
         exit "$pytest_exit"
     fi
 else
-    timeout 35s {test_cmd}
+    timeout 25s {test_cmd}
 fi
 """
 

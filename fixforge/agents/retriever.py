@@ -145,7 +145,7 @@ async def run_retriever(state: AgentState) -> Dict[str, Any]:
             with open(filepath, "r", encoding="utf-8", errors="replace") as fh:
                 source = fh.read()
             parsed = extract_functions_and_classes(source)
-            rel_path = os.path.relpath(filepath, checkout_path)
+            rel_path = os.path.relpath(filepath, checkout_path).replace("\\", "/")
             # Tag each symbol with its source file for the Fixer.
             for fn in parsed.get("functions", []):
                 fn["file"] = rel_path

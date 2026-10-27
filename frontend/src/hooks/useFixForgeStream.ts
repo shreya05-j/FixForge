@@ -131,7 +131,11 @@ export function useFixForgeStream(sessionId: string) {
       setState(prev => ({
         ...prev,
         retryIteration: data.iteration,
-        retryMessage: data.message
+        retryMessage: data.message,
+        nodes: {
+          ...prev.nodes,
+          verifier: prev.nodes.verifier ? { ...prev.nodes.verifier, status: 'running' } : { agent: 'verifier', status: 'running' }
+        }
       }));
     });
 

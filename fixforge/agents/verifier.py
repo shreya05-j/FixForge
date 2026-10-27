@@ -1,5 +1,6 @@
 from core.state import AgentState
 from sandbox.runner import run_in_sandbox
+import asyncio
 import os
 from typing import Dict, Any
 
@@ -9,7 +10,7 @@ async def run_verifier(state: AgentState) -> Dict[str, Any]:
         repo_path = os.getcwd()
 
     candidate_diff = state.get('candidate_diff', '')
-    results = run_in_sandbox(repo_path, candidate_diff, test_cmd="pytest")
+    results = await asyncio.to_thread(run_in_sandbox, repo_path, candidate_diff, "pytest")
     
     current_retry = state.get('retry_count', 0)
     attempts = list(state.get('attempt_history') or [])
