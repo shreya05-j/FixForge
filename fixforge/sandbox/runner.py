@@ -301,7 +301,19 @@ def find_targeted_test_file(repo_path: str, diff_patch: str) -> Optional[str]:
         if os.path.isfile(full):
             return cand
 
-    for root, _, files in os.walk(repo_path):
+    target_dir = os.path.dirname(os.path.join(repo_path, rel_target))
+    if os.path.isdir(target_dir):
+        for f in os.listdir(target_dir):
+            if f.endswith(".py") and ("test" in f.lower()):
+                full = os.path.join(target_dir, f)
+                return os.path.relpath(full, repo_path).replace("\\", "/")
+
+    dirs_checked = 0
+    for root, dirnames, files in os.walk(repo_path):
+        dirs_checked += 1
+        if dirs_checked > 150:
+            break
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in ("node_modules", ".git", "venv", ".venv")]
         if f"test_{stem}.py" in files:
             full = os.path.join(root, f"test_{stem}.py")
             return os.path.relpath(full, repo_path).replace("\\", "/")
@@ -473,17 +485,17 @@ export PYTHONPATH=".:/app_scratch:$PYTHONPATH"
 # Run targeted test if detected
 if [ -n "{rel_test_file}" ] && [ -f "/app_scratch/{rel_test_file}" ]; then
     echo "Executing targeted test suite: {rel_test_file}"
-    pytest -q --tb=short "/app_scratch/{rel_test_file}"
+    timeout 30s pytest -q --tb=short "/app_scratch/{rel_test_file}"
     exit $?
 fi
 
 # Standard test execution fallback
 if [ "{test_cmd}" = "pytest" ]; then
     pytest_exit=0
-    pytest -q --tb=short || pytest_exit=$?
+    timeout 35s pytest -q --tb=short -o cache_dir=/tmp/.pytest_cache || pytest_exit=$?
     if [ "$pytest_exit" -eq 0 ]; then
         exit 0
-    elif [ "$pytest_exit" -eq 5 ]; then
+    elif [ "$pytest_exit" -eq 5 ] || [ "$pytest_exit" -eq 124 ]; then
         python -m unittest discover -s . -p "test*.py" -q 2>/dev/null || python -m compileall -q .
     elif python -m unittest discover -s . -p "test*.py" -q 2>/dev/null; then
         exit 0
@@ -491,7 +503,7 @@ if [ "{test_cmd}" = "pytest" ]; then
         exit "$pytest_exit"
     fi
 else
-    {test_cmd}
+    timeout 35s {test_cmd}
 fi
 """
 

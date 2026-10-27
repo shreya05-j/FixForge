@@ -6,6 +6,7 @@ LLM_CONSISTENCY_SAMPLES additional samples at low temperature (0.15) and stores 
 in state["consistency_samples"] for the Confidence Engine's LLM consistency signal.
 """
 
+import asyncio
 import logging
 from core.state import AgentState
 from core.llm import get_async_client
@@ -133,26 +134,30 @@ async def run_fixer(state: AgentState) -> Dict[str, Any]:
     if not diff:
         logger.error("Fixer produced empty diff after LLM call.")
 
-    # Consistency samples (low temperature, separate calls)
+    # Consistency samples (low temperature, parallel calls via asyncio.gather)
     n_samples = settings.LLM_CONSISTENCY_SAMPLES
     consistency_samples: List[str] = []
     consistency_telemetry: List[Dict[str, Any]] = []
 
     if diff and n_samples > 0:
-        for i in range(n_samples):
-            try:
-                sample, sample_telemetry = await _call_fixer_structured(
-                    prompt,
-                    temperature=0.15,
-                    agent_name=f"Fixer-ConsistencySampler-{i+1}"
-                )
+        tasks = [
+            _call_fixer_structured(
+                prompt,
+                temperature=0.15,
+                agent_name=f"Fixer-ConsistencySampler-{i+1}"
+            )
+            for i in range(n_samples)
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for idx, res in enumerate(results):
+            if isinstance(res, tuple) and len(res) == 2:
+                sample, sample_telemetry = res
                 consistency_telemetry.append(sample_telemetry)
                 if sample and not is_patch_targeting_non_source(sample):
                     consistency_samples.append(sample)
-                    logger.debug("Consistency sample %d/%d generated (%d chars).", i + 1, n_samples, len(sample))
-            except Exception as exc:
-                logger.warning("Consistency sample %d/%d skipped due to rate limit/error: %s", i + 1, n_samples, exc)
-                break
+                    logger.debug("Consistency sample %d/%d generated (%d chars).", idx + 1, n_samples, len(sample))
+            elif isinstance(res, Exception):
+                logger.warning("Consistency sample %d/%d skipped due to exception: %s", idx + 1, n_samples, res)
 
 
     logger.info(

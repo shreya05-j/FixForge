@@ -691,7 +691,7 @@ export default function App() {
                     <div className="flex flex-col h-[550px]">
                       {activeTab === 'diff' && (
                         <DiffViewer
-                          diff={streamState.finalDiff ?? (streamState.chunks ? streamState.chunks : null)}
+                          diff={streamState.finalDiff || (streamState.chunks ? streamState.chunks : (sessionDetails?.patch_diff || null))}
                           isStreaming={streamState.isStreaming || (!!streamState.activeNode && streamState.activeNode === 'fixer' && !streamState.finalDiff)}
                           viewMode={diffViewMode}
                           onCopy={copyDiff}

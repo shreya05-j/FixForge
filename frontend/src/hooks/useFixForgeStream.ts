@@ -119,6 +119,7 @@ export function useFixForgeStream(sessionId: string) {
             output: data.output
           }
         },
+        finalDiff: data.agent === 'fixer' && data.output?.diff ? data.output.diff : prev.finalDiff,
         chunks: '',
         isStreaming: false,
       }));

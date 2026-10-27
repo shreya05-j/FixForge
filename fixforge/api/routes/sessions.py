@@ -288,7 +288,7 @@ async def run_repair_workflow(session_uuid: uuid.UUID, initial_state: AgentState
                             "agent": "fixer",
                             "latency": elapsed,
                             "status": "completed",
-                            "output": {"diff_preview": diff[:100]}
+                            "output": {"diff_preview": diff[:100], "diff": diff}
                         })
                         stream_manager.publish_event(session_id_str, "node_start", {
                             "agent": "verifier",
