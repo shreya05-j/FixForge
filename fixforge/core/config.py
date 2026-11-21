@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # Stage 7: LLM consistency check — number of low-temp samples for the Fixer.
     LLM_CONSISTENCY_SAMPLES: int = 2
     FIXFORGE_MODEL: str = "claude-haiku-5-5"
+    DOCKER_AUTO_START: bool = True
+    DOCKER_START_TIMEOUT_SEC: int = 90
+    DOCKER_BUILD_SANDBOX_ON_START: bool = True
 
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

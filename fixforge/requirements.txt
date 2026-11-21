@@ -5,12 +5,14 @@ langchain
 pydantic
 pydantic-settings
 sqlalchemy
+greenlet
 aiosqlite
 chromadb
 tree-sitter
 tree-sitter-python
 docker
 semgrep
+pyflakes
 pytest
 pytest-asyncio
 requests
@@ -21,5 +23,6 @@ instructor
 datasets
 rich
 scipy
+scipy-stubs
 sse-starlette
 litellm

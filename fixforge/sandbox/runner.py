@@ -270,7 +270,28 @@ def sanitize_unified_diff(diff_text: str) -> str:
                 line = "+++ b/" + line[4:].lstrip("/")
             sanitized_lines.append(line)
             i += 1
-    return "\n".join(sanitized_lines) + "\n"
+    result = "\n".join(sanitized_lines).strip() + "\n"
+    target_file = get_target_file_from_diff(result)
+    if target_file and not result.startswith("diff --git "):
+        result = f"diff --git a/{target_file} b/{target_file}\n" + result
+    return result
+
+
+def validate_unified_diff(diff_text: str) -> Optional[str]:
+    """Return an actionable validation error, or None when the diff is canonical."""
+    if not diff_text or not diff_text.strip():
+        return "Patch is empty."
+    normalized = sanitize_unified_diff(diff_text)
+    files = re.findall(r"^\+\+\+ b/(.+)$", normalized, re.MULTILINE)
+    if len(files) != 1:
+        return "Patch must modify exactly one source file."
+    if is_patch_targeting_non_source(normalized):
+        return "Patch targets a non-source file."
+    if not re.search(r"^--- a/.+$", normalized, re.MULTILINE):
+        return "Patch is missing the --- a/<path> header."
+    if not re.search(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@", normalized, re.MULTILINE):
+        return "Patch is missing a valid unified-diff hunk."
+    return None
 
 
 def get_target_file_from_diff(diff_patch: str) -> Optional[str]:
@@ -313,10 +334,11 @@ def find_targeted_test_file(repo_path: str, diff_patch: str) -> Optional[str]:
             break
         curr_dir = parent
 
-    # 2. Check sibling test files in target directory
+    # 2. Check sibling test files in target directory. Do not treat package
+    # modules such as "testing.py" as test suites.
     if os.path.isdir(target_dir):
         for f in os.listdir(target_dir):
-            if f.endswith(".py") and ("test" in f.lower()):
+            if f.endswith(".py") and (f.lower().startswith("test_") or f.lower().endswith("_test.py")):
                 full = os.path.join(target_dir, f)
                 return os.path.relpath(full, repo_path).replace("\\", "/")
 
@@ -381,7 +403,17 @@ def parse_sandbox_output(exit_code: int, logs: str) -> Dict[str, Any]:
             "stdout": logs,
             "stderr": ""
         }
-    
+
+    if "ModuleNotFoundError" in logs or "ImportError" in logs:
+        return {
+            "status": "unverified",
+            "passed": False,
+            "exit_code": exit_code,
+            "stdout": logs,
+            "stderr": logs,
+            "error": "Sandbox environment is missing a repository test dependency; verification was not completed.",
+        }
+
     return {
         "status": "failed",
         "passed": False,
@@ -465,6 +497,16 @@ def run_in_sandbox(repo_path: str, diff_patch: str, test_cmd: str = "pytest") ->
         apply_script_path = os.path.join(patch_tmpdir, "apply_patch.py")
 
         sanitized_patch = sanitize_unified_diff(diff_patch)
+        patch_error = validate_unified_diff(sanitized_patch)
+        if patch_error:
+            return {
+                "status": "patch_failed",
+                "passed": False,
+                "exit_code": 42,
+                "stdout": "",
+                "stderr": f"error: {patch_error}",
+                "error": f"error: {patch_error}",
+            }
         clean_patch = sanitized_patch.replace("\r\n", "\n")
         with open(patch_file_path, "w", encoding="utf-8", newline="\n") as pf:
             pf.write(clean_patch)
@@ -511,7 +553,7 @@ if [ -s /app_patch/patch.diff ]; then
 fi
 
 echo "=== FIXFORGE_RUNNING_TESTS ==="
-export PYTHONPATH=".:/app_scratch:/app_scratch/{rel_target_dir}:/app_scratch/{rel_target_dir}/src:$PYTHONPATH"
+export PYTHONPATH=".:/app_scratch:/app_scratch/src:$PYTHONPATH"
 
 # 1. Run targeted test if detected (shell script or pytest test file)
 if [ -n "{rel_test_file}" ] && [ -f "/app_scratch/{rel_test_file}" ]; then
@@ -586,9 +628,32 @@ fi
             detach=True
         )
 
-        result = container.wait(timeout=settings.CONTAINER_TIMEOUT_SEC)
+        result = None
+        wait_error = None
+        for wait_attempt in range(3):
+            try:
+                result = container.wait(timeout=settings.CONTAINER_TIMEOUT_SEC)
+                break
+            except Exception as exc:
+                wait_error = exc
+                if "timed out" not in str(exc).lower() and "read timed out" not in str(exc).lower():
+                    raise
+                if wait_attempt < 2:
+                    time.sleep(2)
+        if result is None:
+            raise RuntimeError(f"Docker container wait failed after retries: {wait_error}")
         exit_code = result['StatusCode']
-        logs = container.logs(stdout=True, stderr=True).decode('utf-8', errors='replace')
+        logs = ""
+        for log_attempt in range(3):
+            try:
+                logs = container.logs(stdout=True, stderr=True).decode('utf-8', errors='replace')
+                break
+            except Exception as exc:
+                if log_attempt == 2:
+                    raise
+                if "timed out" not in str(exc).lower() and "read timed out" not in str(exc).lower():
+                    raise
+                time.sleep(1)
 
         return parse_sandbox_output(exit_code, logs)
 

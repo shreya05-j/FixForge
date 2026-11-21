@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import webhooks, sessions, streams, health, memory
+from api.routes import webhooks, sessions, streams, health, memory, chat
 from db.session import init_db
 from core.config import settings
 
@@ -27,6 +27,7 @@ app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
 app.include_router(sessions.router, prefix="/api/sessions", tags=["Sessions"])
 app.include_router(streams.router, prefix="/api/sessions", tags=["Streams"])
 app.include_router(memory.router, prefix="/api/memory", tags=["Memory"])
+app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 
 @app.get("/")
 def health_check():

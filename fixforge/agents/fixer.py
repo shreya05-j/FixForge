@@ -14,6 +14,7 @@ from core.llm_caller import call_structured_llm
 from core.config import settings
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Tuple
+from sandbox.runner import sanitize_unified_diff, validate_unified_diff
 
 async_llm_client = get_async_client()
 
@@ -123,12 +124,17 @@ async def run_fixer(state: AgentState) -> Dict[str, Any]:
 
     from sandbox.runner import is_patch_targeting_non_source
 
+    diff = sanitize_unified_diff(diff)
+    patch_error = validate_unified_diff(diff)
     non_source_target = is_patch_targeting_non_source(diff)
     if non_source_target:
         logger.warning(
             "Fixer produced diff targeting non-source documentation file '%s'. Discarding diff.",
             non_source_target,
         )
+        diff = ""
+    elif patch_error:
+        logger.warning("Fixer produced an invalid unified diff: %s", patch_error)
         diff = ""
 
     if not diff:
@@ -154,7 +160,9 @@ async def run_fixer(state: AgentState) -> Dict[str, Any]:
                 sample, sample_telemetry = res
                 consistency_telemetry.append(sample_telemetry)
                 if sample and not is_patch_targeting_non_source(sample):
-                    consistency_samples.append(sample)
+                    normalized_sample = sanitize_unified_diff(sample)
+                    if not validate_unified_diff(normalized_sample):
+                        consistency_samples.append(normalized_sample)
                     logger.debug("Consistency sample %d/%d generated (%d chars).", idx + 1, n_samples, len(sample))
             elif isinstance(res, Exception):
                 logger.warning("Consistency sample %d/%d skipped due to exception: %s", idx + 1, n_samples, res)

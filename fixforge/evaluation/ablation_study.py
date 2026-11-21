@@ -6,7 +6,7 @@ import json
 from typing import List, Dict, Any
 
 from rich.progress import Progress
-import scipy.stats as stats
+import scipy.stats as stats  # type: ignore
 
 from .dataset_loader import DatasetLoader
 from .metrics import MetricsTracker

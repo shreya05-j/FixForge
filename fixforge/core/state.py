@@ -1,4 +1,5 @@
-from typing import TypedDict, List, Dict, Any, Optional, Literal
+from typing_extensions import TypedDict
+from typing import List, Dict, Any, Optional, Literal
 
 class AgentState(TypedDict, total=False):
 
@@ -24,6 +25,9 @@ class AgentState(TypedDict, total=False):
     severity: Literal["Low", "Medium", "High", "Critical"]
     candidate_diff: str
     test_results: Dict[str, Any]
+    baseline_test_results: Optional[Dict[str, Any]]
+    human_guidance: Optional[str]
+    pr_result: Optional[Dict[str, Any]]
     retry_count: int
     confidence_score: float
     confidence_breakdown: Dict[str, Any]

@@ -7,7 +7,7 @@ from graph.nodes import (
 )
 
 def build_workflow():
-    workflow = StateGraph(AgentState)
+    workflow = StateGraph(AgentState)  # type: ignore
     
     workflow.add_node("planner", planner_node)
     workflow.add_node("retriever", retriever_node)

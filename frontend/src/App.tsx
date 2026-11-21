@@ -6,6 +6,7 @@ import DiffViewer from './components/DiffViewer';
 import WorkstationView from './components/WorkstationView';
 import TelemetryView from './components/TelemetryView';
 import ChromaDBView from './components/ChromaDBView';
+import ChatbotView from './components/ChatbotView';
 import { API_BASE_URL } from './config/env';
 import './index.css';
 
@@ -19,7 +20,7 @@ const pipelineOrder = [
   'reporter'
 ];
 
-type SidebarTab = 'executions' | 'workstation' | 'telemetry' | 'chromadb';
+type SidebarTab = 'executions' | 'workstation' | 'telemetry' | 'chromadb' | 'chatbot';
 
 export default function App() {
   const [sessionId, setSessionId] = useState<string>('');
@@ -27,6 +28,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'diff' | 'diagnosis' | 'logs' | 'history'>('diff');
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('executions');
   const [sessionDetails, setSessionDetails] = useState<any>(null);
+  const [isChatWidgetOpen, setIsChatWidgetOpen] = useState(false);
 
   // Interactive States
   const [isNewRunModalOpen, setIsNewRunModalOpen] = useState(false);
@@ -152,7 +154,23 @@ export default function App() {
       setIsNewRunModalOpen(false);
       setNewRunUrl('');
       fetchLiveSessions();
-      toast.success("Live analysis started!");
+      if (data.docker) {
+        setHealth((previous) => previous ? {
+          ...previous,
+          docker_mode: data.docker.mode,
+          sandbox_image: data.docker.image === 'present' ? 'present' : 'missing',
+          overall_mode: data.docker.mode === 'live' && previous.llm_mode === 'live'
+            ? 'LIVE'
+            : data.docker.mode === 'unavailable' && previous.llm_mode === 'fallback'
+              ? 'FALLBACK'
+              : 'PARTIAL',
+        } : previous);
+      }
+      if (data.docker?.mode === 'live' && data.docker?.image === 'present') {
+        toast.success("Docker sandbox ready. Live analysis started!");
+      } else {
+        toast.warning(`Live analysis started without Docker verification: ${data.docker?.detail || 'Docker is unavailable.'}`);
+      }
     } catch (err: any) {
       toast.error(
         err?.message === 'Failed to fetch'
@@ -350,6 +368,13 @@ export default function App() {
           >
             ChromaDB
           </button>
+          <button 
+            onClick={() => setSidebarTab('chatbot')}
+            className={`${sidebarTab === 'chatbot' ? 'text-primary font-bold border-b-2 border-primary' : 'text-text-muted hover:text-primary'} h-16 flex items-center gap-1.5 pt-0.5 cursor-pointer font-body-md transition-colors`}
+          >
+            <span className="material-symbols-outlined text-[18px]">smart_toy</span>
+            AI Chatbot
+          </button>
         </nav>
 
         <div className="flex items-center gap-4">
@@ -463,12 +488,36 @@ export default function App() {
             >
               <span className="material-symbols-outlined">database</span> ChromaDB Memory
             </button>
+            <button 
+              onClick={() => setSidebarTab('chatbot')}
+              className={`flex items-center gap-4 px-4 py-3 transition-all duration-150 ease-in-out font-body-sm text-body-sm w-full text-left ${
+                sidebarTab === 'chatbot'
+                  ? 'bg-surface-container-highest text-primary font-bold border-l-2 border-primary'
+                  : 'text-text-muted hover:bg-surface-container hover:text-primary'
+              }`}
+            >
+              <span className="material-symbols-outlined" style={{fontVariationSettings: sidebarTab === 'chatbot' ? "'FILL' 1" : undefined}}>smart_toy</span> AI Chatbot
+            </button>
           </nav>
         </aside>
 
         {/* Main Canvas */}
         <main className="flex-1 xl:ml-60 h-full overflow-y-auto bg-background p-margin-mobile md:p-margin-desktop relative">
           <div className="max-w-7xl mx-auto space-y-8 pb-20">
+            {sidebarTab === 'chatbot' && (
+              <ChatbotView
+                activeSession={activeSession}
+                sessionDetails={sessionDetails}
+                currentScenario={currentScenario}
+                liveSessions={liveSessions}
+                onSelectSession={(id) => {
+                  setActiveSession(id);
+                  setSessionId(id);
+                }}
+                mode="full"
+              />
+            )}
+
             {sidebarTab === 'workstation' && (
               <WorkstationView
                 activeSession={activeSession}
@@ -1028,6 +1077,40 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Floating AI Chatbot Quick Access Button & Drawer (Always accessible) */}
+      <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end">
+        {isChatWidgetOpen && (
+          <div className="mb-3 animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <ChatbotView
+              activeSession={activeSession}
+              sessionDetails={sessionDetails}
+              currentScenario={currentScenario}
+              liveSessions={liveSessions}
+              onSelectSession={(id) => {
+                setActiveSession(id);
+                setSessionId(id);
+              }}
+              mode="widget"
+              onCloseWidget={() => setIsChatWidgetOpen(false)}
+            />
+          </div>
+        )}
+        <button
+          onClick={() => setIsChatWidgetOpen((prev) => !prev)}
+          className={`h-12 px-4 rounded-full shadow-2xl flex items-center gap-2 font-bold text-xs cursor-pointer transition-all duration-200 hover:scale-105 border ${
+            isChatWidgetOpen
+              ? 'bg-surface-container-highest text-primary border-primary'
+              : 'bg-primary text-background border-primary-fixed hover:bg-tertiary-fixed'
+          }`}
+          title="FixForge AI Explainer Assistant"
+        >
+          <span className="material-symbols-outlined text-[20px]">
+            {isChatWidgetOpen ? 'close' : 'smart_toy'}
+          </span>
+          <span>{isChatWidgetOpen ? 'Close AI Explainer' : 'Ask FixForge AI'}</span>
+        </button>
+      </div>
 
     </div>
   );

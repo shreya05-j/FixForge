@@ -271,7 +271,7 @@ async def test_gate_stage5_full_e2e_repair_from_webhook():
 
 
         # Verify child records
-        assert len(sess.attempts) >= 1
+        assert len(sess.attempts) >= 1  # type: ignore
         assert sess.attempts[0].status == "passed"
         assert sess.diagnosis is not None
         assert sess.diagnosis.failure_classification == "Logic Error"

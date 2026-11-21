@@ -31,9 +31,16 @@ DATABASE_URL=sqlite+aiosqlite:///./fixforge.db
 # Vector Memory & Docker Sandbox
 CHROMA_PERSIST_DIR=./chroma_data
 DOCKER_SANDBOX_IMAGE=fixforge-sandbox:latest
+DOCKER_AUTO_START=true
+DOCKER_START_TIMEOUT_SEC=90
+DOCKER_BUILD_SANDBOX_ON_START=true
 CONTAINER_TIMEOUT_SEC=60
 MAX_CONTAINER_MEMORY=512m
 ```
+
+When a repository analysis is started, FixForge automatically attempts to start
+Docker Desktop, waits for the daemon, and builds the configured sandbox image
+if it is missing. Set `DOCKER_AUTO_START=false` to disable this behavior.
 
 ### Architectural Deviation: SQLite vs. PostgreSQL
 - **SRS Requirement**: Section 5 specified PostgreSQL with async connection pooling.

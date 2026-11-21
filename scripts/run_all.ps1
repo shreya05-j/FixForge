@@ -21,15 +21,30 @@ if (-not $PythonPath) {
 }
 Write-Host "[INFO] Python executable: $PythonPath" -ForegroundColor Green
 
-# 2. Check Docker Desktop Status
+# 2. Start Docker Desktop and wait for the daemon
 Write-Host "[INFO] Checking Docker daemon status..." -ForegroundColor Gray
-$dockerCheck = docker ps 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "[WARNING] Docker Desktop daemon is not running." -ForegroundColor Yellow
-    Write-Host "          FixForge will operate in graceful UNVERIFIED sandbox mode." -ForegroundColor Yellow
-    Write-Host "          Start Docker Desktop to enable live container test verification." -ForegroundColor Yellow
-} else {
+$dockerReady = $false
+$null = docker ps 2>&1
+if ($LASTEXITCODE -eq 0) {
+    $dockerReady = $true
+} elseif (Get-Command docker -ErrorAction SilentlyContinue) {
+    Write-Host "[INFO] Starting Docker Desktop..." -ForegroundColor Gray
+    $null = docker desktop start 2>&1
+    $deadline = (Get-Date).AddSeconds(90)
+    while ((Get-Date) -lt $deadline) {
+        $null = docker ps 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $dockerReady = $true
+            break
+        }
+        Start-Sleep -Seconds 2
+    }
+}
+if ($dockerReady) {
     Write-Host "[INFO] Docker daemon is running and healthy." -ForegroundColor Green
+} else {
+    Write-Host "[WARNING] Docker Desktop daemon is not available." -ForegroundColor Yellow
+    Write-Host "          FixForge will continue with graceful UNVERIFIED sandbox mode." -ForegroundColor Yellow
 }
 
 # 3. Check .env

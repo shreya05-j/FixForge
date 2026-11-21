@@ -20,6 +20,7 @@ from core.state import AgentState
 from api.routes.streams import stream_manager
 from repo_checkout import checkout_repo
 from core.config import settings
+from core.docker_manager import ensure_docker_ready
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -679,15 +680,10 @@ async def start_session(
     session_id = uuid.uuid4()
     
     active_llm = "live" if ((settings.OPENAI_API_KEY and len(settings.OPENAI_API_KEY) > 5) or (settings.GROQ_API_KEY and len(settings.GROQ_API_KEY) > 10)) else "fallback"
-    active_docker = "unavailable"
-
-    try:
-        import docker
-        d_client = docker.from_env()
-        d_client.ping()
-        active_docker = "live"
-    except Exception:
-        active_docker = "unavailable"
+    docker_setup = await asyncio.to_thread(ensure_docker_ready)
+    active_docker = docker_setup["mode"]
+    if active_docker != "live":
+        logger.warning("Docker setup did not complete for session %s: %s", session_id, docker_setup.get("detail"))
 
     try:
         new_session = ReviewSession(
@@ -757,7 +753,8 @@ async def start_session(
     return {
         "session_id": str(session_id),
         "status": "started",
-        "url": payload.url
+        "url": payload.url,
+        "docker": docker_setup,
     }
 
 @router.get("/{session_id}")
